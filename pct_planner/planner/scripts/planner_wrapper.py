@@ -54,6 +54,28 @@ class TomogramPlanner(object):
         elev_c = np.nan_to_num(elev_c, nan=1e6)
 
         self.initPlanner(trav, trav_gx, trav_gy, elev_g, elev_c)
+
+    def loadTomogramDirect(self, tomogram_data, resolution, center, slice_h0, slice_dh):
+        """Load tomogram directly from numpy array without pickle file"""
+        tomogram = np.asarray(tomogram_data, dtype=np.float32)
+
+        self.resolution = float(resolution)
+        self.center = np.asarray(center, dtype=np.double)
+        self.n_slice = tomogram.shape[1]
+        self.slice_h0 = float(slice_h0)
+        self.slice_dh = float(slice_dh)
+        self.map_dim = [tomogram.shape[2], tomogram.shape[3]]
+        self.offset = np.array([int(self.map_dim[0] / 2), int(self.map_dim[1] / 2)], dtype=np.int32)
+
+        trav = tomogram[0]
+        trav_gx = tomogram[1]
+        trav_gy = tomogram[2]
+        elev_g = tomogram[3]
+        elev_g = np.nan_to_num(elev_g, nan=-100)
+        elev_c = tomogram[4]
+        elev_c = np.nan_to_num(elev_c, nan=1e6)
+
+        self.initPlanner(trav, trav_gx, trav_gy, elev_g, elev_c)
         
     def initPlanner(self, trav, trav_gx, trav_gy, elev_g, elev_c):
         diff_t = trav[1:] - trav[:-1]

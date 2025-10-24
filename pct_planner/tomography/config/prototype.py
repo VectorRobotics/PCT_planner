@@ -2,11 +2,21 @@ import numpy as np
 from sensor_msgs.msg import PointField
 
 
+# For ROS2, PointField needs to be created differently
+def create_point_field(name, offset, datatype, count):
+    field = PointField()
+    field.name = name
+    field.offset = offset
+    field.datatype = datatype
+    field.count = count
+    return field
+
+
 POINT_FIELDS_XYZI = [
-    PointField('x', 0, PointField.FLOAT32, 1),
-    PointField('y', 4, PointField.FLOAT32, 1),
-    PointField('z', 8, PointField.FLOAT32, 1),
-    PointField('intensity', 12, PointField.FLOAT32, 1)
+    create_point_field('x', 0, PointField.FLOAT32, 1),
+    create_point_field('y', 4, PointField.FLOAT32, 1),
+    create_point_field('z', 8, PointField.FLOAT32, 1),
+    create_point_field('intensity', 12, PointField.FLOAT32, 1)
 ]
 
 

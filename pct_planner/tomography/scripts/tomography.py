@@ -11,9 +11,10 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import Header
 from sensor_msgs.msg import PointCloud2
-import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs_py import point_cloud2 as pc2
 
 from tomogram import Tomogram
+from tomogram_viz import generate_tomogram_pointcloud
 
 sys.path.append('../')
 from config import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
@@ -65,12 +66,12 @@ class Tomography(Node):
     def loadPCD(self, pcd_file):
         pcd = o3d.io.read_point_cloud(rsg_root + "/rsc/pcd/" + pcd_file)
         points = np.asarray(pcd.points).astype(np.float32)
-        self.get_logger().info("PCD points: %d", points.shape[0])
+        self.get_logger().info(f"PCD points: {points.shape[0]}")
 
         if points.shape[1] > 3:
             points = points[:, :3]
         self.points_max = np.max(points, axis=0)
-        self.points_min = np.min(points, axis=0)           
+        self.points_min = np.min(points, axis=0)
         self.points_min[-1] = self.ground_h
         self.map_dim_x = int(np.ceil((self.points_max[0] - self.points_min[0]) / self.resolution)) + 4
         self.map_dim_y = int(np.ceil((self.points_max[1] - self.points_min[1]) / self.resolution)) + 4
@@ -79,10 +80,10 @@ class Tomography(Node):
         self.slice_h0 = self.points_min[-1] + self.slice_dh
         self.tomogram.initMappingEnv(self.center, self.map_dim_x, self.map_dim_y, n_slice_init, self.slice_h0)
 
-        self.get_logger().info("Map center: [%.2f, %.2f]", self.center[0], self.center[1])
-        self.get_logger().info("Dim_x: %d", self.map_dim_x)
-        self.get_logger().info("Dim_y: %d", self.map_dim_y)
-        self.get_logger().info("Num slices init: %d", n_slice_init)
+        self.get_logger().info(f"Map center: [{self.center[0]:.2f}, {self.center[1]:.2f}]")
+        self.get_logger().info(f"Dim_x: {self.map_dim_x}")
+        self.get_logger().info(f"Dim_y: {self.map_dim_y}")
+        self.get_logger().info(f"Num slices init: {n_slice_init}")
 
         self.VISPROTO_I, self.VISPROTO_P = \
             GRID_POINTS_XYZI(self.resolution, self.map_dim_x, self.map_dim_y)
@@ -112,12 +113,12 @@ class Tomography(Node):
                 t_simp += t_gpu['t_simp']
                 t_all += (time.time() - t_start) * 1e3
 
-        self.get_logger().info("Num slices simp: %d", layers_g.shape[0])
-        self.get_logger().info("Num repeats (for benchmarking only): %d", n_repeat)
-        self.get_logger().info(" -- avg t_map  (ms): %f", t_map / n_repeat)
-        self.get_logger().info(" -- avg t_trav (ms): %f", t_trav / n_repeat)
-        self.get_logger().info(" -- avg t_simp (ms): %f", t_simp / n_repeat)
-        self.get_logger().info(" -- avg t_all  (ms): %f", t_all / n_repeat)
+        self.get_logger().info(f"Num slices simp: {layers_g.shape[0]}")
+        self.get_logger().info(f"Num repeats (for benchmarking only): {n_repeat}")
+        self.get_logger().info(f" -- avg t_map  (ms): {t_map / n_repeat:.2f}")
+        self.get_logger().info(f" -- avg t_trav (ms): {t_trav / n_repeat:.2f}")
+        self.get_logger().info(f" -- avg t_simp (ms): {t_simp / n_repeat:.2f}")
+        self.get_logger().info(f" -- avg t_all  (ms): {t_all / n_repeat:.2f}")
 
         self.n_slice = layers_g.shape[0]
 
@@ -142,7 +143,7 @@ class Tomography(Node):
         with open(self.export_dir + file_name, 'wb') as handle:
             pickle.dump(data_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        self.get_logger().info("Tomogram exported: %s", file_name)
+        self.get_logger().info(f"Tomogram exported: {file_name}")
 
     def publishPoints(self, points):
         header = Header()
@@ -176,30 +177,13 @@ class Tomography(Node):
         header.stamp = rclpy.time.Time().to_msg()
         header.frame_id = self.map_frame
 
-        n_slice = layers_g.shape[0]
-        vis_g = layers_g.copy()
-        vis_t = layers_t.copy() 
-        layer_points = self.VISPROTO_P.copy()
-        layer_points[:, :2] += self.center
+        # Use the shared visualization utility function
+        global_points = generate_tomogram_pointcloud(
+            layers_g, layers_t,
+            self.VISPROTO_I, self.VISPROTO_P,
+            self.center, self.slice_dh
+        )
 
-        global_points = None
-        for i in range(n_slice - 1):
-            mask_h = (vis_g[i + 1] - vis_g[i]) < self.slice_dh
-            vis_g[i, mask_h] = np.nan
-            vis_t[i + 1, mask_h] = np.minimum(vis_t[i, mask_h], vis_t[i + 1, mask_h])
-            layer_points[:, 2] = vis_g[i, self.VISPROTO_I[:, 0], self.VISPROTO_I[:, 1]]
-            layer_points[:, 3] = vis_t[i, self.VISPROTO_I[:, 0], self.VISPROTO_I[:, 1]]
-            valid_points = layer_points[~np.isnan(layer_points).any(axis=-1)]
-            if global_points is None:
-                global_points = valid_points
-            else:
-                global_points = np.concatenate((global_points, valid_points), axis=0)
-
-        layer_points[:, 2] = vis_g[-1, self.VISPROTO_I[:, 0], self.VISPROTO_I[:, 1]]
-        layer_points[:, 3] = vis_t[-1, self.VISPROTO_I[:, 0], self.VISPROTO_I[:, 1]]
-        valid_points = layer_points[~np.isnan(layer_points).any(axis=-1)]
-        global_points = np.concatenate((global_points, valid_points), axis=0)
-        
         points_msg = pc2.create_cloud(header, POINT_FIELDS_XYZI, global_points)
         self.tomogram_pub.publish(points_msg)
 

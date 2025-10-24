@@ -1,0 +1,47 @@
+/**:
+  ros__parameters:
+    # Map Resolution Parameters
+    # resolution: Horizontal grid cell size (meters)
+    # Lower values = higher detail but more computation
+    resolution: 0.3
+
+    # slice_dh: Vertical slice thickness (meters)
+    # Height between each layer of the tomogram
+    slice_dh: 1.0
+
+    # ground_h: Ground height reference level (meters)
+    # Set to 0.0 to auto-detect from point cloud
+    ground_h: 0.0
+
+    # Traversability Analysis Parameters
+    # kernel_size: Neighborhood size for traversability assessment (grid cells)
+    # Larger values = smoother terrain assessment but may miss small obstacles
+    # Must be odd number (3, 5, 7, 9, etc.)
+    kernel_size: 3
+
+    # slope_max_deg: Maximum passable slope (degrees)
+    # Increase to allow steeper terrain, decrease for more conservative planning
+    # Default 30 deg ≈ 58% grade
+    # Recommended: 20-35 degrees for most robots
+    slope_max_deg: 25.0
+
+    # step_max: Maximum step height (meters)
+    # Maximum vertical discontinuity the robot can traverse
+    # Should match robot's physical step-climbing capability
+    step_max: 0.25
+
+    # standable_ratio: Proportion of standable cells required in kernel (0.0-1.0)
+    # Higher values = more conservative, requires more stable terrain
+    # Lower values = allows planning in rougher terrain
+    standable_ratio: 0.3
+
+    # Safety and Inflation Parameters
+    # safe_margin: Robot safety buffer (meters)
+    # Minimum clearance around obstacles
+    # Should be larger than robot's physical radius
+    safe_margin: 0.5
+
+    # inflation: Additional inflation beyond safety margin (meters)
+    # Creates a gradual cost gradient around obstacles
+    # Total clearance = safe_margin + inflation
+    inflation: 0.3
