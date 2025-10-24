@@ -218,4 +218,6 @@ if __name__ == '__main__':
 
     mapping = Tomography(cfg, scene_cfg)
 
-    rclpy.spin()
+    rclpy.spin(mapping)
+    mapping.destroy_node()
+    rclpy.shutdown()

@@ -2,7 +2,8 @@ import sys
 import argparse
 import numpy as np
 
-import rospy
+import rclpy
+from rclpy.qos import QoSProfile, DurabilityProfile
 from nav_msgs.msg import Path
 
 from utils import *
@@ -30,10 +31,10 @@ else:
     start_pos = np.array([0.0, 0.0], dtype=np.float32)
     end_pos = np.array([23.0, 10.0], dtype=np.float32)
 
-path_pub = rospy.Publisher("/pct_path", Path, latch=True, queue_size=1)
+
 planner = TomogramPlanner(cfg)
 
-def pct_plan():
+def pct_plan(path_pub):
     planner.loadTomogram(tomo_file)
 
     traj_3d = planner.plan(start_pos, end_pos)
@@ -43,8 +44,17 @@ def pct_plan():
 
 
 if __name__ == '__main__':
-    rospy.init_node("pct_planner", anonymous=True)
+    rclpy.init()
 
-    pct_plan()
+    qos_profile = QoSProfile(
+        depth = 1,
+        durability = DurabilityProfile.TRANSIENT_LOCAL
+    )
+    node = rclpy.create_node("pct_planner")
+    path_pub = node.create_publisher(Path, "/pct_path", qos_profile)
 
-    rospy.spin()
+    pct_plan(path_pub)
+
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
