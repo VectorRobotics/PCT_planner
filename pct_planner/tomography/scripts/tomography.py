@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import os
 import sys
-import time
 import pickle
 import numpy as np
 import open3d as o3d
@@ -90,35 +89,10 @@ class Tomography(Node):
 
         return points
         
-    def process(self, points):        
-        t_map = 0.0
-        t_trav = 0.0
-        t_simp = 0.0
-        t_all = 0.0
-        n_repeat = 10
-
-        """ 
-        GPU time benchmark, where CUDA events are synchronized for correct time measurement.
-        The function is repeatedly run for n_repeat times to calculate the average processing time of each modules.
-        The time of the first warm-up run is excluded to reduce timing fluctuation and exclude the overhead in initial invocations.
-        See https://docs.cupy.dev/en/stable/user_guide/performance.html for more details
-        """
-        for i in range(n_repeat + 1):
-            t_start = time.time()
-            layers_t, trav_grad_x, trav_grad_y, layers_g, layers_c, t_gpu = self.tomogram.point2map(points)
-
-            if i > 0:
-                t_map += t_gpu['t_map']
-                t_trav += t_gpu['t_trav']
-                t_simp += t_gpu['t_simp']
-                t_all += (time.time() - t_start) * 1e3
+    def process(self, points):
+        layers_t, trav_grad_x, trav_grad_y, layers_g, layers_c = self.tomogram.point2map(points)
 
         self.get_logger().info(f"Num slices simp: {layers_g.shape[0]}")
-        self.get_logger().info(f"Num repeats (for benchmarking only): {n_repeat}")
-        self.get_logger().info(f" -- avg t_map  (ms): {t_map / n_repeat:.2f}")
-        self.get_logger().info(f" -- avg t_trav (ms): {t_trav / n_repeat:.2f}")
-        self.get_logger().info(f" -- avg t_simp (ms): {t_simp / n_repeat:.2f}")
-        self.get_logger().info(f" -- avg t_all  (ms): {t_all / n_repeat:.2f}")
 
         self.n_slice = layers_g.shape[0]
 

@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'pct_planner_node.py = pct_planner.scripts.pct_planner_node:main',
+            'pct_planner_visualizer.py = pct_planner.scripts.pct_planner_visualizer:main',
         ],
     },
 )

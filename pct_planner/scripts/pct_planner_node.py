@@ -31,9 +31,12 @@ class PCTPlannerNode(Node):
 
         # Traversability analysis parameters
         self.declare_parameter('kernel_size', 5)
-        self.declare_parameter('slope_max_deg', 30.0)  # degrees
+        self.declare_parameter('interval_min', 0.5)
+        self.declare_parameter('interval_free', 0.65)
+        self.declare_parameter('slope_max', 0.40)  # radians
         self.declare_parameter('step_max', 0.3)
         self.declare_parameter('standable_ratio', 0.5)
+        self.declare_parameter('cost_barrier', 50.0)
 
         # Safety and inflation parameters
         self.declare_parameter('safe_margin', 0.3)
@@ -44,11 +47,29 @@ class PCTPlannerNode(Node):
         slice_dh = self.get_parameter('slice_dh').value
         ground_h = self.get_parameter('ground_h').value
         kernel_size = self.get_parameter('kernel_size').value
-        slope_max_deg = self.get_parameter('slope_max_deg').value
+        interval_min = self.get_parameter('interval_min').value
+        interval_free = self.get_parameter('interval_free').value
+        slope_max = self.get_parameter('slope_max').value
         step_max = self.get_parameter('step_max').value
         standable_ratio = self.get_parameter('standable_ratio').value
+        cost_barrier = self.get_parameter('cost_barrier').value
         safe_margin = self.get_parameter('safe_margin').value
         inflation = self.get_parameter('inflation').value
+
+        # Log the loaded parameters
+        self.get_logger().info("PCT Planner Parameters:")
+        self.get_logger().info(f"  resolution: {resolution} m")
+        self.get_logger().info(f"  slice_dh: {slice_dh} m")
+        self.get_logger().info(f"  ground_h: {ground_h} m")
+        self.get_logger().info(f"  kernel_size: {kernel_size}")
+        self.get_logger().info(f"  interval_min: {interval_min} m")
+        self.get_logger().info(f"  interval_free: {interval_free} m")
+        self.get_logger().info(f"  slope_max: {slope_max} rad ({np.rad2deg(slope_max):.2f} deg)")
+        self.get_logger().info(f"  step_max: {step_max} m")
+        self.get_logger().info(f"  standable_ratio: {standable_ratio}")
+        self.get_logger().info(f"  cost_barrier: {cost_barrier}")
+        self.get_logger().info(f"  safe_margin: {safe_margin} m")
+        self.get_logger().info(f"  inflation: {inflation} m")
 
         # Create tomogram configuration
         tomo_config = TomogramConfig(
@@ -56,11 +77,14 @@ class PCTPlannerNode(Node):
             slice_dh=slice_dh,
             ground_h=ground_h,
             kernel_size=kernel_size,
-            slope_max=np.deg2rad(slope_max_deg),
+            interval_min=interval_min,
+            interval_free=interval_free,
+            slope_max=slope_max,
             step_max=step_max,
             safe_margin=safe_margin,
             inflation=inflation,
-            standable_ratio=standable_ratio
+            standable_ratio=standable_ratio,
+            cost_barrier=cost_barrier
         )
 
         self.current_pose = None

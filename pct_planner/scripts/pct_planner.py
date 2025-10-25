@@ -10,8 +10,11 @@ from dataclasses import dataclass
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PLANNER_SCRIPTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'planner', 'scripts'))
 PLANNER_LIB_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'planner', 'lib'))
+TOMOGRAPHY_SCRIPTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'tomography', 'scripts'))
+
 sys.path.insert(0, PLANNER_SCRIPTS_DIR)
 sys.path.insert(0, PLANNER_LIB_DIR)
+sys.path.insert(0, TOMOGRAPHY_SCRIPTS_DIR)  # CRITICAL: Add tomography scripts to path for kernels.py
 
 from planner_wrapper import TomogramPlanner
 from utils.vis_ros import traj2ros
@@ -21,15 +24,19 @@ from pct_planner.tomography.scripts.tomogram import Tomogram
 
 @dataclass
 class TomogramConfig:
-    resolution: float = 0.3
-    slice_dh: float = 0.5
-    ground_h: float = 0.0
-    kernel_size: int = 5
-    slope_max: float = np.deg2rad(30)
-    step_max: float = 0.3
-    safe_margin: float = 0.3
-    inflation: float = 0.2
-    standable_ratio: float = 0.5
+    # Default values match SceneBuilding (scene_building.py)
+    resolution: float = 0.10  # SceneMap.resolution
+    slice_dh: float = 0.5  # SceneMap.slice_dh
+    ground_h: float = 0.0  # SceneMap.ground_h
+    kernel_size: int = 7  # SceneTrav.kernel_size
+    interval_min: float = 0.50  # SceneTrav.interval_min
+    interval_free: float = 0.65  # SceneTrav.interval_free
+    slope_max: float = 0.40  # SceneTrav.slope_max (radians, ~22.9 degrees) - SceneBuilding value
+    step_max: float = 0.17  # SceneTrav.step_max - SceneBuilding value
+    safe_margin: float = 0.4  # SceneTrav.safe_margin
+    inflation: float = 0.2  # SceneTrav.inflation
+    standable_ratio: float = 0.20  # SceneTrav.standable_ratio
+    cost_barrier: float = 50.0  # SceneTrav.cost_barrier
 
 
 class PCTPlanner:
@@ -59,8 +66,14 @@ class PCTPlanner:
             raise ValueError(f"Points must have at least 3 dimensions, got {points.shape[1]}")
 
         points = points[:, :3].astype(np.float32)
+
         min_xyz = np.min(points, axis=0)
         max_xyz = np.max(points, axis=0)
+
+        # CRITICAL: Must match tomography.py line 75 exactly!
+        # In tomography.py: self.points_min[-1] = self.ground_h
+        # This modifies min_xyz[2] BEFORE calculating n_slice_init and slice_h0
+        min_xyz[2] = self.tomo_config.ground_h
 
         if map_center is None:
             map_center = ((min_xyz[:2] + max_xyz[:2]) / 2).astype(np.float32)
@@ -69,40 +82,50 @@ class PCTPlanner:
 
         map_dim_x = int(np.ceil((max_xyz[0] - min_xyz[0]) / self.tomo_config.resolution)) + 4
         map_dim_y = int(np.ceil((max_xyz[1] - min_xyz[1]) / self.tomo_config.resolution)) + 4
-        n_slice_init = int(np.ceil((max_xyz[2] - min_xyz[2]) / self.tomo_config.slice_dh)) + 2
-        slice_h0 = self.tomo_config.ground_h if self.tomo_config.ground_h != 0.0 else min_xyz[2]
+        n_slice_init = int(np.ceil((max_xyz[2] - min_xyz[2]) / self.tomo_config.slice_dh))
+        # slice_h0 uses modified min_xyz[2] (which is now ground_h)
+        slice_h0 = min_xyz[2] + self.tomo_config.slice_dh
+
+        # Create config object that matches exactly what tomography.py uses
+        class SceneMap:
+            pass
+
+        class SceneTrav:
+            pass
 
         class SceneConfig:
-            class map:
-                resolution = self.tomo_config.resolution
-                slice_dh = self.tomo_config.slice_dh
-                ground_h = slice_h0
+            map = SceneMap()
+            trav = SceneTrav()
 
-            class trav:
-                kernel_size = self.tomo_config.kernel_size
-                slope_max = self.tomo_config.slope_max
-                step_max = self.tomo_config.step_max
-                interval_min = 0.1
-                interval_free = 0.2
-                standable_ratio = self.tomo_config.standable_ratio
-                cost_barrier = 100.0
-                safe_margin = self.tomo_config.safe_margin
-                inflation = self.tomo_config.inflation
+        scene_cfg = SceneConfig()
 
-        self.tomogram_processor = Tomogram(SceneConfig())
+        # Set map parameters - must match tomography.py exactly
+        scene_cfg.map.resolution = self.tomo_config.resolution
+        scene_cfg.map.slice_dh = self.tomo_config.slice_dh
+        # CRITICAL: ground_h in scene_cfg is NOT used by Tomogram - it's just for reference
+        # The actual ground_h was already applied to min_xyz[2] above
+        scene_cfg.map.ground_h = self.tomo_config.ground_h
+
+        # Set trav parameters - must match tomography.py exactly
+        scene_cfg.trav.kernel_size = self.tomo_config.kernel_size
+        scene_cfg.trav.slope_max = self.tomo_config.slope_max
+        scene_cfg.trav.step_max = self.tomo_config.step_max
+        scene_cfg.trav.interval_min = self.tomo_config.interval_min
+        scene_cfg.trav.interval_free = self.tomo_config.interval_free
+        scene_cfg.trav.standable_ratio = self.tomo_config.standable_ratio
+        scene_cfg.trav.cost_barrier = self.tomo_config.cost_barrier
+        scene_cfg.trav.safe_margin = self.tomo_config.safe_margin
+        scene_cfg.trav.inflation = self.tomo_config.inflation
+
+        self.tomogram_processor = Tomogram(scene_cfg)
         self.tomogram_processor.initMappingEnv(
             map_center, map_dim_x, map_dim_y, n_slice_init, slice_h0
         )
 
-        layers_t, trav_gx, trav_gy, layers_g, layers_c, timing = \
+        layers_t, trav_gx, trav_gy, layers_g, layers_c = \
             self.tomogram_processor.point2map(points)
 
-        tomogram_data = np.zeros((5, layers_t.shape[0], layers_t.shape[1], layers_t.shape[2]), dtype=np.float32)
-        tomogram_data[0] = layers_t
-        tomogram_data[1] = trav_gx
-        tomogram_data[2] = trav_gy
-        tomogram_data[3] = layers_g
-        tomogram_data[4] = layers_c
+        tomogram_data = np.stack((layers_t, trav_gx, trav_gy, layers_g, layers_c))
 
         metadata = {
             'data': tomogram_data,

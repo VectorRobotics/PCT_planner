@@ -52,6 +52,24 @@ The PCT Planner uses a tomographic representation of the environment to compute 
   - **Increase to 9-11** to ensure obstacles are properly detected in their neighborhood
 - **Constraint**: Must be odd number (3, 5, 7, 9, 11, etc.)
 
+#### `interval_min` (float, meters)
+- **Default**: 0.50 m
+- **Description**: Minimum vertical clearance required above terrain for traversability
+- **Impact**:
+  - **Lower** (0.3-0.4): Allows planning under lower overhangs
+  - **Higher** (0.6-0.8): Requires more overhead clearance
+- **Tuning**: Should match robot height plus safety margin
+- **Constraint**: Must be less than `interval_free`
+
+#### `interval_free` (float, meters)
+- **Default**: 0.65 m
+- **Description**: Vertical space considered free for robot traversal
+- **Impact**:
+  - **Lower** (0.5-0.6): More conservative about overhead clearance
+  - **Higher** (0.8-1.0): Allows planning in tighter vertical spaces
+- **Tuning**: Should be greater than `interval_min` by at least 0.1m
+- **Constraint**: Must be greater than `interval_min`
+
 #### `slope_max_deg` (float, degrees)
 - **Default**: 30.0°
 - **Description**: Maximum passable slope angle
@@ -81,6 +99,17 @@ The PCT Planner uses a tomographic representation of the environment to compute 
 - **Tuning for "planning through walls"**:
   - **Increase to 0.6-0.7** to require more stable terrain
   - This helps reject areas near walls or obstacles
+
+#### `cost_barrier` (float)
+- **Default**: 50.0
+- **Description**: Cost threshold for impassable/highly dangerous terrain
+- **Impact**:
+  - **Lower** (30-40): More conservative, marks more areas as impassable
+  - **Higher** (60-100): Allows planning through riskier terrain
+- **Tuning for "planning through walls"**:
+  - **Decrease to 30-40** to be more conservative
+  - Areas with cost >= this value are considered completely impassable
+- **Note**: This is a critical safety parameter
 
 ### Safety and Inflation Parameters
 
@@ -118,9 +147,12 @@ If the planner is currently planning through walls, try this conservative config
 
     # More conservative traversability
     kernel_size: 9
+    interval_min: 0.50
+    interval_free: 0.65
     slope_max_deg: 20.0
     step_max: 0.20
     standable_ratio: 0.6
+    cost_barrier: 40.0
 
     # Larger safety margins
     safe_margin: 0.6
@@ -187,13 +219,11 @@ Or create environment-specific config files:
 
 ## Additional Parameters (Future Enhancement)
 
-The following parameters are currently hardcoded but could be made configurable:
+The following parameters are currently hardcoded but could be made configurable in future versions:
 
-- `interval_min`: Minimum vertical clearance (currently 0.1m in dynamic config)
-- `interval_free`: Free space interval threshold (currently 0.2m)
-- `cost_barrier`: Cost assigned to impassable terrain (currently 100.0)
-- Gateway detection thresholds
-- Point cloud minimum threshold
+- Gateway detection thresholds (currently -8.0, 8.0)
+- Point cloud minimum threshold (currently 1000 points)
+- Map dimension padding (currently +4 grid cells)
 
 ## References
 

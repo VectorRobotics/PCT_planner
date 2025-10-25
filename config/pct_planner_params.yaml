@@ -3,11 +3,12 @@
     # Map Resolution Parameters
     # resolution: Horizontal grid cell size (meters)
     # Lower values = higher detail but more computation
-    resolution: 0.3
+    # MATCHES tomography.py default
+    resolution: 0.2
 
     # slice_dh: Vertical slice thickness (meters)
     # Height between each layer of the tomogram
-    slice_dh: 1.0
+    slice_dh: 0.5
 
     # ground_h: Ground height reference level (meters)
     # Set to 0.0 to auto-detect from point cloud
@@ -17,31 +18,52 @@
     # kernel_size: Neighborhood size for traversability assessment (grid cells)
     # Larger values = smoother terrain assessment but may miss small obstacles
     # Must be odd number (3, 5, 7, 9, etc.)
-    kernel_size: 3
+    # MATCHES tomography.py default
+    kernel_size: 7
+
+    # interval_min: Minimum vertical clearance (meters)
+    # Minimum free space required above terrain for traversability
+    # Higher values = require more overhead clearance
+    interval_min: 0.6
+
+    # interval_free: Free space interval threshold (meters)
+    # Vertical space considered free for robot traversal
+    # Should be greater than interval_min
+    interval_free: 0.7
 
     # slope_max_deg: Maximum passable slope (degrees)
     # Increase to allow steeper terrain, decrease for more conservative planning
     # Default 30 deg ≈ 58% grade
     # Recommended: 20-35 degrees for most robots
-    slope_max_deg: 25.0
+    # MATCHES tomography.py default (0.36 radians = 20.63 degrees)
+    slope_max: 0.4
 
     # step_max: Maximum step height (meters)
     # Maximum vertical discontinuity the robot can traverse
     # Should match robot's physical step-climbing capability
-    step_max: 0.25
+    # MATCHES tomography.py default
+    step_max: 0.3
 
     # standable_ratio: Proportion of standable cells required in kernel (0.0-1.0)
     # Higher values = more conservative, requires more stable terrain
     # Lower values = allows planning in rougher terrain
-    standable_ratio: 0.3
+    standable_ratio: 0.2
+
+    # cost_barrier: Cost assigned to impassable/highly dangerous terrain
+    # Areas with cost >= this value are considered impassable
+    # Higher values = allow planning through riskier terrain
+    # Default: 50.0 (conservative)
+    cost_barrier: 100.0
 
     # Safety and Inflation Parameters
     # safe_margin: Robot safety buffer (meters)
     # Minimum clearance around obstacles
     # Should be larger than robot's physical radius
-    safe_margin: 0.5
+    # MATCHES tomography.py default
+    safe_margin: 0.2
 
     # inflation: Additional inflation beyond safety margin (meters)
     # Creates a gradual cost gradient around obstacles
     # Total clearance = safe_margin + inflation
-    inflation: 0.3
+    # MATCHES tomography.py default
+    inflation: 0.1

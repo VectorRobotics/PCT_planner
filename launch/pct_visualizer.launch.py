@@ -26,24 +26,51 @@ def generate_launch_description():
     new_python_path = f"{planner_lib_dir}:{existing_python_path}"
 
     # Declare launch arguments
+    pcd_file_arg = DeclareLaunchArgument(
+        'pcd_file',
+        default_value='',
+        description='Path to PCD file to visualize'
+    )
+
     params_file_arg = DeclareLaunchArgument(
         'params_file',
         default_value=default_params_file,
         description='Path to PCT planner parameters YAML file'
     )
 
-    pct_planner_node = Node(
+    publish_rate_arg = DeclareLaunchArgument(
+        'publish_rate',
+        default_value='1.0',
+        description='Rate (Hz) to publish visualization (default: 1.0)'
+    )
+
+    publish_layers_arg = DeclareLaunchArgument(
+        'publish_layers',
+        default_value='false',
+        description='Publish individual tomogram layers (default: false)'
+    )
+
+    pct_visualizer_node = Node(
         package='pct_planner',
-        executable='pct_planner_node.py',
-        name='pct_planner',
+        executable='pct_planner_visualizer.py',
+        name='pct_planner_visualizer',
         output='screen',
-        parameters=[LaunchConfiguration('params_file')],
-        additional_env={'LD_LIBRARY_PATH': new_ld_path, 'PYTHONPATH': new_python_path},
+        parameters=[
+            LaunchConfiguration('params_file'),
+            {
+                'pcd_file': LaunchConfiguration('pcd_file'),
+                'publish_rate': LaunchConfiguration('publish_rate'),
+                'publish_layers': LaunchConfiguration('publish_layers'),
+            }
+        ],
+        additional_env={'LD_LIBRARY_PATH': new_ld_path, 'PYTHONPATH': new_python_path}
     )
 
     return LaunchDescription([
+        pcd_file_arg,
         params_file_arg,
-        LogInfo(msg='Starting PCT Planner Node...'),
-        pct_planner_node,
-        LogInfo(msg='PCT Planner Node launched'),
+        publish_rate_arg,
+        publish_layers_arg,
+        LogInfo(msg=['Starting PCT Planner Visualizer with PCD file: ', LaunchConfiguration('pcd_file')]),
+        pct_visualizer_node,
     ])

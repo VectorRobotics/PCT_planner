@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 
 import rclpy
-from rclpy.qos import QoSProfile, DurabilityProfile
+from rclpy.qos import QoSProfile
 from nav_msgs.msg import Path
 
 from utils import *
@@ -47,8 +47,7 @@ if __name__ == '__main__':
     rclpy.init()
 
     qos_profile = QoSProfile(
-        depth = 1,
-        durability = DurabilityProfile.TRANSIENT_LOCAL
+        depth = 1
     )
     node = rclpy.create_node("pct_planner")
     path_pub = node.create_publisher(Path, "/pct_path", qos_profile)
