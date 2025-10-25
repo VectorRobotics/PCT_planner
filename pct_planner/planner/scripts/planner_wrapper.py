@@ -99,7 +99,9 @@ class TomogramPlanner(object):
             max_heading_rate=self.max_heading_rate, use_quintic=self.use_quintic
         )
         self.planner.init_map(
-            20, 15, self.resolution, self.n_slice, 0.2,
+            self.cfg.planner.astar_cost_threshold,
+            self.cfg.planner.safe_cost_margin,
+            self.resolution, self.n_slice, 0.2,
             trav.reshape(-1, trav.shape[-1]).astype(np.double),
             elev_g.reshape(-1, elev_g.shape[-1]).astype(np.double),
             elev_c.reshape(-1, elev_c.shape[-1]).astype(np.double),
@@ -108,8 +110,26 @@ class TomogramPlanner(object):
             -trav_gx.reshape(-1, trav_gx.shape[-1]).astype(np.double)
         )
 
-    def plan(self, start_pos, end_pos):
-        # TODO: calculate slice index. By default the start and end pos are all at slice 0
+    def plan(self, start_pos, end_pos, start_z=None, end_z=None):
+        # Calculate slice index from Z coordinate
+        if start_z is not None:
+            start_slice = int(np.clip(
+                np.round((start_z - self.slice_h0) / self.slice_dh),
+                0, self.n_slice - 1
+            ))
+            self.start_idx[0] = start_slice
+        else:
+            self.start_idx[0] = 0
+
+        if end_z is not None:
+            end_slice = int(np.clip(
+                np.round((end_z - self.slice_h0) / self.slice_dh),
+                0, self.n_slice - 1
+            ))
+            self.end_idx[0] = end_slice
+        else:
+            self.end_idx[0] = 0
+
         self.start_idx[1:] = self.pos2idx(start_pos)
         self.end_idx[1:] = self.pos2idx(end_pos)
 

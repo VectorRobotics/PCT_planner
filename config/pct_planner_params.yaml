@@ -4,11 +4,11 @@
     # resolution: Horizontal grid cell size (meters)
     # Lower values = higher detail but more computation
     # MATCHES tomography.py default
-    resolution: 0.2
+    resolution: 0.1
 
     # slice_dh: Vertical slice thickness (meters)
     # Height between each layer of the tomogram
-    slice_dh: 0.6
+    slice_dh: 0.5
 
     # ground_h: Ground height reference level (meters)
     # Set to 0.0 to auto-detect from point cloud
@@ -24,12 +24,12 @@
     # interval_min: Minimum vertical clearance (meters)
     # Minimum free space required above terrain for traversability
     # Higher values = require more overhead clearance
-    interval_min: 0.4
+    interval_min: 0.3
 
     # interval_free: Free space interval threshold (meters)
     # Vertical space considered free for robot traversal
     # Should be greater than interval_min
-    interval_free: 0.6
+    interval_free: 0.5
 
     # slope_max_deg: Maximum passable slope (degrees)
     # Increase to allow steeper terrain, decrease for more conservative planning
@@ -42,18 +42,18 @@
     # Maximum vertical discontinuity the robot can traverse
     # Should match robot's physical step-climbing capability
     # MATCHES tomography.py default
-    step_max: 0.4
+    step_max: 0.5
 
     # standable_ratio: Proportion of standable cells required in kernel (0.0-1.0)
     # Higher values = more conservative, requires more stable terrain
     # Lower values = allows planning in rougher terrain
-    standable_ratio: 0.2
+    standable_ratio: 0.15
 
     # cost_barrier: Cost assigned to impassable/highly dangerous terrain
     # Areas with cost >= this value are considered impassable
     # Higher values = allow planning through riskier terrain
     # Default: 50.0 (conservative)
-    cost_barrier: 100.0
+    cost_barrier: 80.0
 
     # Safety and Inflation Parameters
     # safe_margin: Robot safety buffer (meters)

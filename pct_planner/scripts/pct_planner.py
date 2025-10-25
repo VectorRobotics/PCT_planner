@@ -163,13 +163,15 @@ class PCTPlanner:
         start_pose: Tuple[float, float, float],
         goal_pose: Tuple[float, float, float]
     ) -> Optional[np.ndarray]:
-        if self.current_tomogram_file is None:
+        if self.current_tomogram_file is None and self.current_metadata is None:
             raise ValueError("No tomogram loaded")
 
         start_pos_2d = np.array([start_pose[0], start_pose[1]], dtype=np.float32)
         goal_pos_2d = np.array([goal_pose[0], goal_pose[1]], dtype=np.float32)
+        start_z = start_pose[2]
+        goal_z = goal_pose[2]
 
-        traj_3d = self.planner.plan(start_pos_2d, goal_pos_2d)
+        traj_3d = self.planner.plan(start_pos_2d, goal_pos_2d, start_z, goal_z)
         return traj_3d
 
     def plan_path_to_ros(

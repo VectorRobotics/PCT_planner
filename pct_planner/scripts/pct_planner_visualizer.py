@@ -23,6 +23,9 @@ except ImportError:
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
 from std_msgs.msg import Header
+from geometry_msgs.msg import PointStamped
+from visualization_msgs.msg import Marker
+from nav_msgs.msg import Path
 
 from pct_planner.scripts.pct_planner import PCTPlanner, TomogramConfig
 from pct_planner.tomography.config.prototype import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
@@ -121,6 +124,28 @@ class PCTPlannerVisualizer(Node):
         self.pub_tomogram = self.create_publisher(PointCloud2, '/tomogram', qos_profile)
         self.pub_raw_cloud = self.create_publisher(PointCloud2, '/raw_pointcloud', qos_profile)
 
+        # Publishers for start/goal markers and path
+        marker_qos = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            depth=10
+        )
+        self.pub_start_marker = self.create_publisher(Marker, '/start_marker', marker_qos)
+        self.pub_goal_marker = self.create_publisher(Marker, '/goal_marker', marker_qos)
+        self.pub_path = self.create_publisher(Path, '/planned_path', marker_qos)
+
+        # Subscribe to clicked points from RViz
+        self.sub_clicked = self.create_subscription(
+            PointStamped,
+            '/clicked_point',
+            self.clicked_point_callback,
+            marker_qos
+        )
+
+        # Track start and goal points
+        self.start_point = None
+        self.goal_point = None
+
         if self.publish_layers:
             self.layer_g_pubs = []
             self.layer_c_pubs = []
@@ -181,6 +206,108 @@ class PCTPlannerVisualizer(Node):
         self.timer = self.create_timer(1.0 / publish_rate, self.publish_callback)
 
         self.get_logger().info("PCT Planner Visualizer ready - publishing tomogram")
+        self.get_logger().info("Click with 'Publish Point' tool: 1st click = START (green), 2nd click = GOAL (red)")
+
+    def clicked_point_callback(self, msg: PointStamped):
+        """Handle clicked points - first click is start, second is goal."""
+        if self.start_point is None:
+            # First click - set start point
+            self.start_point = (msg.point.x, msg.point.y, msg.point.z)
+            self.get_logger().info(f"START set: ({msg.point.x:.2f}, {msg.point.y:.2f}, {msg.point.z:.2f})")
+            self.publish_start_marker(msg.header.frame_id)
+        else:
+            # Second click - set goal point and plan path
+            self.goal_point = (msg.point.x, msg.point.y, msg.point.z)
+            self.get_logger().info(f"GOAL set: ({msg.point.x:.2f}, {msg.point.y:.2f}, {msg.point.z:.2f})")
+            self.publish_goal_marker(msg.header.frame_id)
+
+            # Plan path
+            self.plan_path()
+
+            # Reset for next pair
+            self.start_point = None
+            self.goal_point = None
+
+    def publish_start_marker(self, frame_id):
+        """Publish green sphere marker for start point."""
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "start"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+
+        marker.pose.position.x = self.start_point[0]
+        marker.pose.position.y = self.start_point[1]
+        marker.pose.position.z = self.start_point[2]
+        marker.pose.orientation.w = 1.0
+
+        marker.scale.x = 0.5
+        marker.scale.y = 0.5
+        marker.scale.z = 0.5
+
+        marker.color.r = 0.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+        marker.color.a = 0.9
+
+        marker.lifetime.sec = 0
+
+        self.pub_start_marker.publish(marker)
+
+    def publish_goal_marker(self, frame_id):
+        """Publish red sphere marker for goal point."""
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "goal"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+
+        marker.pose.position.x = self.goal_point[0]
+        marker.pose.position.y = self.goal_point[1]
+        marker.pose.position.z = self.goal_point[2]
+        marker.pose.orientation.w = 1.0
+
+        marker.scale.x = 0.5
+        marker.scale.y = 0.5
+        marker.scale.z = 0.5
+
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.color.a = 0.9
+
+        marker.lifetime.sec = 0
+
+        self.pub_goal_marker.publish(marker)
+
+    def plan_path(self):
+        """Plan a path from start to goal using the PCT planner."""
+        if self.start_point is None or self.goal_point is None:
+            return
+
+        try:
+            self.get_logger().info(f"Planning path from START to GOAL...")
+
+            # Load the tomogram into the planner
+            self.planner.load_tomogram_direct(self.tomogram_metadata)
+
+            # Plan the path
+            path_msg = self.planner.plan_path_to_ros(self.start_point, self.goal_point)
+
+            if path_msg is not None:
+                path_msg.header.frame_id = self.map_frame
+                path_msg.header.stamp = self.get_clock().now().to_msg()
+                self.pub_path.publish(path_msg)
+                self.get_logger().info(f"Path planned! {len(path_msg.poses)} waypoints")
+            else:
+                self.get_logger().warn("Path planning failed - no valid path found")
+
+        except Exception as e:
+            self.get_logger().error(f"Error planning path: {e}")
 
     def load_pcd(self, pcd_file):
         """Load a PCD file using Open3D."""
