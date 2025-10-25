@@ -90,8 +90,9 @@ class PCTPlannerNode(Node):
         self.current_pose = None
         self.goal_pose = None
         self.point_cloud_map = None
-        self.map_updated = False
-        self.planning_in_progress = False
+        self.tomogram_processing = False
+        self.pending_pointcloud = None
+        self.tomogram_lock = threading.Lock()
 
         # Tomogram visualization variables
         self.VISPROTO_I = None
@@ -143,6 +144,10 @@ class PCTPlannerNode(Node):
         self.get_logger().info("PCT Planner ready")
 
     def map_callback(self, msg: PointCloud2):
+        """
+        Point cloud callback - triggers asynchronous tomogram building.
+        Each new point cloud triggers a new tomogram processing task.
+        """
         try:
             points_list = list(pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True))
 
@@ -158,8 +163,13 @@ class PCTPlannerNode(Node):
                 points[:, 1] = points_array['y']
                 points[:, 2] = points_array['z']
 
-            self.point_cloud_map = points
-            self.map_updated = True
+            # Store the new point cloud
+            with self.tomogram_lock:
+                self.pending_pointcloud = points
+
+            # Start processing if not already processing
+            if not self.tomogram_processing:
+                threading.Thread(target=self._process_tomogram, daemon=True).start()
 
         except Exception as e:
             self.get_logger().error(f"Error processing point cloud: {e}")
@@ -177,49 +187,65 @@ class PCTPlannerNode(Node):
         self.current_pose = (x, y, z, yaw)
 
     def goal_callback(self, msg: PoseStamped):
+        """Goal callback - triggers synchronous path planning."""
         self.goal_pose = (msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
+        self._plan_path()
 
-        if self.point_cloud_map is not None and self.map_updated:
-            threading.Thread(target=self._update_tomogram_then_plan, daemon=True).start()
-            self.map_updated = False
-        else:
-            threading.Thread(target=self._plan_path_async, daemon=True).start()
+    def _process_tomogram(self):
+        """
+        Continuously process tomograms using the latest point cloud.
+        """
+        self.tomogram_processing = True
 
-    def _update_tomogram_then_plan(self):
-        if self.point_cloud_map is None:
-            return
+        while True:
+            # Get the latest pending point cloud
+            with self.tomogram_lock:
+                points_to_process = self.pending_pointcloud
+                self.pending_pointcloud = None
 
-        try:
-            tomogram_metadata = self.planner.pointcloud_to_tomogram(
-                self.point_cloud_map)
-            self.planner.load_tomogram_direct(tomogram_metadata)
+            # If no pending point cloud, exit the loop
+            if points_to_process is None:
+                break
 
-            # Store tomogram metadata for visualization
-            self.tomogram_center = tomogram_metadata['center']
-            self.tomogram_slice_dh = tomogram_metadata['slice_dh']
-            map_dim_x, map_dim_y = tomogram_metadata['map_dim']
-            resolution = tomogram_metadata['resolution']
+            try:
+                self.get_logger().info(f"Building tomogram from {len(points_to_process)} points...")
 
-            # Generate grid prototypes for visualization
-            self.VISPROTO_I, self.VISPROTO_P = GRID_POINTS_XYZI(resolution, map_dim_x, map_dim_y)
+                # Build the tomogram (this is the slow part)
+                tomogram_metadata = self.planner.pointcloud_to_tomogram(points_to_process)
+                self.planner.load_tomogram_direct(tomogram_metadata)
 
-            # Publish the tomogram visualization
-            self.publish_tomogram(tomogram_metadata)
+                # Store the processed point cloud map
+                self.point_cloud_map = points_to_process
 
-            self._plan_path_async()
+                # Store tomogram metadata for visualization
+                self.tomogram_center = tomogram_metadata['center']
+                self.tomogram_slice_dh = tomogram_metadata['slice_dh']
+                map_dim_x, map_dim_y = tomogram_metadata['map_dim']
+                resolution = tomogram_metadata['resolution']
 
-        except Exception as e:
-            self.get_logger().error(f"Failed to update tomogram: {e}")
+                # Generate grid prototypes for visualization
+                self.VISPROTO_I, self.VISPROTO_P = GRID_POINTS_XYZI(resolution, map_dim_x, map_dim_y)
 
-    def _plan_path_async(self):
-        if self.planning_in_progress:
-            return
+                # Publish the tomogram visualization
+                self.publish_tomogram(tomogram_metadata)
+                self.get_logger().info("Tomogram built successfully")
+
+            except Exception as e:
+                self.get_logger().error(f"Failed to build tomogram: {e}")
+
+            # After finishing, check if there's a new point cloud to process
+            # (the while loop will continue if pending_pointcloud was updated during processing)
+
+        self.tomogram_processing = False
+
+    def _plan_path(self):
+        """Plan path synchronously (fast operation)."""
         if self.current_pose is None or self.goal_pose is None:
+            self.get_logger().warn("Cannot plan path: missing pose or goal")
             return
         if self.planner.current_metadata is None:
+            self.get_logger().warn("Cannot plan path: no tomogram available")
             return
-
-        self.planning_in_progress = True
 
         try:
             start_pose = self.current_pose[:3]
@@ -229,12 +255,12 @@ class PCTPlannerNode(Node):
                 path_msg.header.frame_id = "map"
                 path_msg.header.stamp = self.get_clock().now().to_msg()
                 self.pub_path.publish(path_msg)
+                self.get_logger().info(f"Published path with {len(path_msg.poses)} poses")
+            else:
+                self.get_logger().warn("Path planning failed")
 
         except Exception as e:
             self.get_logger().error(f"Path planning error: {e}")
-
-        finally:
-            self.planning_in_progress = False
 
     def publish_tomogram(self, tomogram_metadata: dict):
         """

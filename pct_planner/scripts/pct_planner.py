@@ -70,9 +70,6 @@ class PCTPlanner:
         min_xyz = np.min(points, axis=0)
         max_xyz = np.max(points, axis=0)
 
-        # CRITICAL: Must match tomography.py line 75 exactly!
-        # In tomography.py: self.points_min[-1] = self.ground_h
-        # This modifies min_xyz[2] BEFORE calculating n_slice_init and slice_h0
         min_xyz[2] = self.tomo_config.ground_h
 
         if map_center is None:
@@ -83,10 +80,8 @@ class PCTPlanner:
         map_dim_x = int(np.ceil((max_xyz[0] - min_xyz[0]) / self.tomo_config.resolution)) + 4
         map_dim_y = int(np.ceil((max_xyz[1] - min_xyz[1]) / self.tomo_config.resolution)) + 4
         n_slice_init = int(np.ceil((max_xyz[2] - min_xyz[2]) / self.tomo_config.slice_dh))
-        # slice_h0 uses modified min_xyz[2] (which is now ground_h)
         slice_h0 = min_xyz[2] + self.tomo_config.slice_dh
 
-        # Create config object that matches exactly what tomography.py uses
         class SceneMap:
             pass
 
