@@ -10,7 +10,7 @@ import math
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
 from nav_msgs.msg import Odometry, Path, OccupancyGrid
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PointStamped
 from std_msgs.msg import Header
 
 # Import PCT planner and tomogram visualization utilities
@@ -18,6 +18,7 @@ from pct_planner.scripts.pct_planner import PCTPlanner, TomogramConfig
 from pct_planner.tomography.config.prototype import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
 from pct_planner.tomography.scripts.tomogram_viz import generate_tomogram_pointcloud
 from pct_planner.utils.goal_validator import tomogram_to_occupancy_grid, select_layer_for_height, find_safe_goal_bfs
+from pct_planner.utils.path_utils import get_waypoint_from_traj
 
 
 class PCTPlannerNode(Node):
@@ -43,6 +44,12 @@ class PCTPlannerNode(Node):
         self.declare_parameter('safe_margin', 0.3)
         self.declare_parameter('inflation', 0.2)
 
+        # Waypoint following parameters
+        self.declare_parameter('lookahead_distance', 2.0)
+        self.declare_parameter('min_lookahead_distance', 0.5)
+        self.declare_parameter('curvature_adaptive', True)
+        self.declare_parameter('curvature_scale', 1.0)
+
         # Get parameters
         resolution = self.get_parameter('resolution').value
         slice_dh = self.get_parameter('slice_dh').value
@@ -56,6 +63,10 @@ class PCTPlannerNode(Node):
         cost_barrier = self.get_parameter('cost_barrier').value
         safe_margin = self.get_parameter('safe_margin').value
         inflation = self.get_parameter('inflation').value
+        self.lookahead_distance = self.get_parameter('lookahead_distance').value
+        self.min_lookahead_distance = self.get_parameter('min_lookahead_distance').value
+        self.curvature_adaptive = self.get_parameter('curvature_adaptive').value
+        self.curvature_scale = self.get_parameter('curvature_scale').value
 
         # Log the loaded parameters
         self.get_logger().info("PCT Planner Parameters:")
@@ -71,6 +82,10 @@ class PCTPlannerNode(Node):
         self.get_logger().info(f"  cost_barrier: {cost_barrier}")
         self.get_logger().info(f"  safe_margin: {safe_margin} m")
         self.get_logger().info(f"  inflation: {inflation} m")
+        self.get_logger().info(f"  lookahead_distance: {self.lookahead_distance} m")
+        self.get_logger().info(f"  min_lookahead_distance: {self.min_lookahead_distance} m")
+        self.get_logger().info(f"  curvature_adaptive: {self.curvature_adaptive}")
+        self.get_logger().info(f"  curvature_scale: {self.curvature_scale}")
 
         # Create tomogram configuration
         tomo_config = TomogramConfig(
@@ -89,7 +104,9 @@ class PCTPlannerNode(Node):
         )
 
         self.current_pose = None
+        self.current_odom = None
         self.goal_pose = None
+        self.current_path = None
         self.point_cloud_map = None
         self.tomogram_processing = False
         self.pending_pointcloud = None
@@ -132,6 +149,7 @@ class PCTPlannerNode(Node):
             PoseStamped, '/goal_pose', self.goal_callback, 10)
 
         self.pub_path = self.create_publisher(Path, '/global_path', path_qos)
+        self.pub_waypoint = self.create_publisher(PointStamped, '/way_point', 10)
 
         # Tomogram publisher with TRANSIENT_LOCAL for visualization
         tomogram_qos = QoSProfile(
@@ -189,6 +207,10 @@ class PCTPlannerNode(Node):
         yaw = math.atan2(siny_cosp, cosy_cosp)
 
         self.current_pose = (x, y, z, yaw)
+        self.current_odom = msg
+
+        # Publish waypoint if we have a path
+        self._publish_waypoint()
 
     def goal_callback(self, msg: PoseStamped):
         """Goal callback - triggers synchronous path planning."""
@@ -313,12 +335,39 @@ class PCTPlannerNode(Node):
                 path_msg.header.frame_id = "map"
                 path_msg.header.stamp = self.get_clock().now().to_msg()
                 self.pub_path.publish(path_msg)
+                self.current_path = path_msg
                 self.get_logger().info(f"Published path with {len(path_msg.poses)} poses")
+
+                # Immediately publish first waypoint
+                self._publish_waypoint()
             else:
                 self.get_logger().warn("Path planning failed")
+                self.current_path = None
 
         except Exception as e:
             self.get_logger().error(f"Path planning error: {e}")
+
+    def _publish_waypoint(self):
+        """Extract and publish the next waypoint from the current path."""
+        if self.current_path is None or self.current_odom is None:
+            return
+
+        try:
+            waypoint_msg = get_waypoint_from_traj(
+                self.current_path,
+                self.current_odom,
+                lookahead_dist=self.lookahead_distance,
+                min_lookahead_dist=self.min_lookahead_distance,
+                curvature_adaptive=self.curvature_adaptive,
+                curvature_scale=self.curvature_scale
+            )
+
+            if waypoint_msg is not None:
+                waypoint_msg.header.stamp = self.get_clock().now().to_msg()
+                self.pub_waypoint.publish(waypoint_msg)
+
+        except Exception as e:
+            self.get_logger().error(f"Waypoint extraction error: {e}")
 
     def publish_tomogram(self, tomogram_metadata: dict):
         """

@@ -67,3 +67,28 @@
     # Total clearance = safe_margin + inflation
     # MATCHES tomography.py default
     inflation: 0.1
+
+    # Waypoint Following Parameters (Adaptive Lookahead)
+    # lookahead_distance: Maximum look-ahead distance for waypoint extraction (meters)
+    # Distance ahead on the path where the next waypoint is selected on straight paths
+    # Larger values = smoother following but less responsive to path changes
+    # Smaller values = more accurate following but may be jerky
+    # Recommended: 1.5-3.0 meters depending on robot speed
+    lookahead_distance: 4.0
+
+    # min_lookahead_distance: Minimum look-ahead distance on tight curves (meters)
+    # The lookahead distance will scale down to this value on highly curved paths
+    # Should be >= robot wheelbase for kinematic feasibility
+    # Recommended: 0.3-0.8 meters
+    min_lookahead_distance: 0.5
+
+    # curvature_adaptive: Enable adaptive lookahead based on path curvature
+    # true = reduce lookahead on curves for tighter tracking (recommended)
+    # false = use constant lookahead_distance
+    curvature_adaptive: true
+
+    # curvature_scale: Sensitivity to path curvature (dimensionless)
+    # Higher values = more aggressive lookahead reduction on curves
+    # Lower values = gentler lookahead adjustment
+    # Typical range: 0.5-2.0, recommended: 1.0
+    curvature_scale: 1.5
