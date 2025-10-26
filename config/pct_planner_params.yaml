@@ -4,7 +4,7 @@
     # resolution: Horizontal grid cell size (meters)
     # Lower values = higher detail but more computation
     # MATCHES tomography.py default
-    resolution: 0.1
+    resolution: 0.15
 
     # slice_dh: Vertical slice thickness (meters)
     # Height between each layer of the tomogram

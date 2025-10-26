@@ -14,7 +14,7 @@ TOMOGRAPHY_SCRIPTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'tomogra
 
 sys.path.insert(0, PLANNER_SCRIPTS_DIR)
 sys.path.insert(0, PLANNER_LIB_DIR)
-sys.path.insert(0, TOMOGRAPHY_SCRIPTS_DIR)  # CRITICAL: Add tomography scripts to path for kernels.py
+sys.path.insert(0, TOMOGRAPHY_SCRIPTS_DIR)
 
 from planner_wrapper import TomogramPlanner
 from utils.vis_ros import traj2ros

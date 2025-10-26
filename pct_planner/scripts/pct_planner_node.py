@@ -9,7 +9,7 @@ import math
 
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
-from nav_msgs.msg import Odometry, Path
+from nav_msgs.msg import Odometry, Path, OccupancyGrid
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Header
 
@@ -17,6 +17,7 @@ from std_msgs.msg import Header
 from pct_planner.scripts.pct_planner import PCTPlanner, TomogramConfig
 from pct_planner.tomography.config.prototype import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
 from pct_planner.tomography.scripts.tomogram_viz import generate_tomogram_pointcloud
+from pct_planner.utils.goal_validator import tomogram_to_occupancy_grid, select_layer_for_height, find_safe_goal_bfs
 
 
 class PCTPlannerNode(Node):
@@ -141,6 +142,9 @@ class PCTPlannerNode(Node):
         )
         self.pub_tomogram = self.create_publisher(PointCloud2, '/tomogram', tomogram_qos)
 
+        # Debug occupancy grid publisher
+        self.pub_debug_grid = self.create_publisher(OccupancyGrid, '/tomogram_debug_grid', tomogram_qos)
+
         self.get_logger().info("PCT Planner ready")
 
     def map_callback(self, msg: PointCloud2):
@@ -228,7 +232,6 @@ class PCTPlannerNode(Node):
 
                 # Publish the tomogram visualization
                 self.publish_tomogram(tomogram_metadata)
-                self.get_logger().info("Tomogram built successfully")
 
             except Exception as e:
                 self.get_logger().error(f"Failed to build tomogram: {e}")
@@ -249,7 +252,62 @@ class PCTPlannerNode(Node):
 
         try:
             start_pose = self.current_pose[:3]
-            path_msg = self.planner.plan_path_to_ros(start_pose, self.goal_pose)
+            adjusted_goal = self.goal_pose
+
+            # Validate and adjust goal to safe location
+            metadata = self.planner.current_metadata
+            layers_t = metadata['data'][0]  # traversability cost (inflated cost)
+            n_slices, dim_x, dim_y = layers_t.shape
+
+            # Select layer for goal height
+            layer_idx = select_layer_for_height(
+                self.goal_pose[2],
+                metadata['slice_h0'],
+                metadata['slice_dh'],
+                n_slices
+            )
+
+            if layer_idx is not None:
+                # Convert tomogram layer to occupancy grid
+                # layers_t[layer_idx] shape is (dim_x, dim_y)
+                layer_cost = layers_t[layer_idx]
+                occupancy_grid = tomogram_to_occupancy_grid(
+                    layer_cost,
+                    metadata['resolution'],
+                    metadata['center']
+                )
+
+                # Publish debug grid
+                occupancy_grid.header.frame_id = "map"
+                occupancy_grid.header.stamp = self.get_clock().now().to_msg()
+                self.pub_debug_grid.publish(occupancy_grid)
+
+                # Find safe goal using BFS
+                safe_goal_2d = find_safe_goal_bfs(
+                    costmap=occupancy_grid,
+                    goal=(self.goal_pose[0], self.goal_pose[1]),
+                    cost_threshold=50,  # Cost threshold (0-100)
+                    min_clearance=0.5,  # Minimum clearance in meters
+                    max_search_distance=5.0,  # Max search distance in meters
+                    connectivity_check_radius=3  # Connectivity check radius in cells
+                )
+
+                if safe_goal_2d is not None:
+                    # Use the adjusted 2D position with the layer height
+                    layer_height = metadata['slice_h0'] + layer_idx * metadata['slice_dh']
+                    adjusted_goal = (safe_goal_2d[0], safe_goal_2d[1], layer_height)
+
+                    # Log adjustment
+                    dist = np.linalg.norm(np.array(self.goal_pose[:2]) - np.array(safe_goal_2d))
+                    if dist > 0.01:
+                        self.get_logger().info(f"Goal adjusted by {dist:.2f}m to safe location")
+                else:
+                    self.get_logger().warn("Could not find safe goal, using original")
+            else:
+                self.get_logger().warn(f"Goal height {self.goal_pose[2]:.2f}m out of tomogram range")
+
+            # Plan path with adjusted goal
+            path_msg = self.planner.plan_path_to_ros(start_pose, adjusted_goal)
 
             if path_msg is not None:
                 path_msg.header.frame_id = "map"
@@ -290,8 +348,6 @@ class PCTPlannerNode(Node):
 
             points_msg = pc2.create_cloud(header, POINT_FIELDS_XYZI, global_points)
             self.pub_tomogram.publish(points_msg)
-
-            self.get_logger().info(f"Published tomogram with {global_points.shape[0]} points")
 
         except Exception as e:
             self.get_logger().error(f"Failed to publish tomogram: {e}")
