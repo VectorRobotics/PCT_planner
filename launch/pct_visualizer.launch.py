@@ -63,7 +63,11 @@ def generate_launch_description():
                 'publish_layers': LaunchConfiguration('publish_layers'),
             }
         ],
-        additional_env={'LD_LIBRARY_PATH': new_ld_path, 'PYTHONPATH': new_python_path}
+        additional_env={
+            'LD_LIBRARY_PATH': new_ld_path,
+            'PYTHONPATH': new_python_path
+        },
+        prefix='bash -c "export LD_LIBRARY_PATH=' + new_ld_path + ':${LD_LIBRARY_PATH} && export PYTHONPATH=' + new_python_path + ':${PYTHONPATH} && $0 $@" '
     )
 
     return LaunchDescription([

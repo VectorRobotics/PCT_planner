@@ -4,11 +4,11 @@
     # resolution: Horizontal grid cell size (meters)
     # Lower values = higher detail but more computation
     # MATCHES tomography.py default
-    resolution: 0.15
+    resolution: 0.075
 
     # slice_dh: Vertical slice thickness (meters)
     # Height between each layer of the tomogram
-    slice_dh: 0.5
+    slice_dh: 0.4
 
     # ground_h: Ground height reference level (meters)
     # Set to 0.0 to auto-detect from point cloud
@@ -19,7 +19,7 @@
     # Larger values = smoother terrain assessment but may miss small obstacles
     # Must be odd number (3, 5, 7, 9, etc.)
     # MATCHES tomography.py default
-    kernel_size: 7
+    kernel_size: 9
 
     # interval_min: Minimum vertical clearance (meters)
     # Minimum free space required above terrain for traversability
@@ -47,7 +47,7 @@
     # standable_ratio: Proportion of standable cells required in kernel (0.0-1.0)
     # Higher values = more conservative, requires more stable terrain
     # Lower values = allows planning in rougher terrain
-    standable_ratio: 0.15
+    standable_ratio: 0.05
 
     # cost_barrier: Cost assigned to impassable/highly dangerous terrain
     # Areas with cost >= this value are considered impassable
@@ -60,13 +60,13 @@
     # Minimum clearance around obstacles
     # Should be larger than robot's physical radius
     # MATCHES tomography.py default
-    safe_margin: 0.2
+    safe_margin: 0.05
 
     # inflation: Additional inflation beyond safety margin (meters)
     # Creates a gradual cost gradient around obstacles
     # Total clearance = safe_margin + inflation
     # MATCHES tomography.py default
-    inflation: 0.1
+    inflation: 0.05
 
     # Waypoint Following Parameters (Adaptive Lookahead)
     # lookahead_distance: Maximum look-ahead distance for waypoint extraction (meters)

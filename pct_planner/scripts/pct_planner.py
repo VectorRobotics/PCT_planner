@@ -4,6 +4,7 @@ import sys
 import os
 import pickle
 import numpy as np
+import open3d as o3d
 from typing import Tuple, Optional
 from dataclasses import dataclass
 
@@ -66,6 +67,21 @@ class PCTPlanner:
             raise ValueError(f"Points must have at least 3 dimensions, got {points.shape[1]}")
 
         points = points[:, :3].astype(np.float32)
+
+        # Create Open3D point cloud for cleaning operations
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+
+        # Statistical outlier removal
+        # Removes points that are further away from their neighbors compared to the average
+        pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+
+        # Radius outlier removal
+        # Removes points that have few neighbors in a given radius
+        pcd, _ = pcd.remove_radius_outlier(nb_points=10, radius=0.5)
+
+        # Convert back to numpy array
+        points = np.asarray(pcd.points, dtype=np.float32)
 
         min_xyz = np.min(points, axis=0)
         max_xyz = np.max(points, axis=0)

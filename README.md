@@ -86,6 +86,21 @@ colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release --package
 source install/setup.bash
 ```
 
+### PCT Planner Visualizer
+
+The PCT Planner Visualizer loads a PCD file and visualizes the generated tomogram for offline analysis and path planning testing. To launch:
+```
+source install/setup.bash
+ros2 launch pct_planner pct_visualizer.launch.py pcd_file:=/path/to/file.pcd
+```
+
+Example using the Unity environment map:
+```
+ros2 launch pct_planner pct_visualizer.launch.py pcd_file:=install/vehicle_simulator/share/vehicle_simulator/mesh/unity/map.pcd
+```
+
+Use the 'Publish Point' tool in RViz to set a start point (1st click, green marker) and goal point (2nd click, red marker). The path is automatically planned and displayed. More information is available on the [PCT Planner website](https://byangw.github.io/projects/tmech2024/).
+
 ## Integration with Autonomy Stack
 
 The PCT Planner integrates seamlessly with the existing autonomy stack and can be used as a drop-in replacement for the FAR Planner.

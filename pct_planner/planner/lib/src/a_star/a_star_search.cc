@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <queue>
 #include <unordered_map>
@@ -23,7 +24,8 @@ void Astar::Init(const double cost_threshold, const int num_layers,
                  const Eigen::MatrixXd& ele_map) {
   auto t0 = std::chrono::high_resolution_clock::now();
   cost_threshold_ = cost_threshold;
-step_cost_weight_  = step_cost_weight;
+  step_cost_weight_ = step_cost_weight;
+  resolution_ = resolution;
 
   max_x_ = cost_map.cols();
   max_y_ = cost_map.rows() / num_layers;
@@ -90,10 +92,6 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
   auto goal_node = &grid_map_[goal[0]][goal[2]][goal[1]];
   start_node->g = 0.0;
 
-  if (goal_node->cost > cost_threshold_) {
-    printf("goal node is not reachable, cost: %f", goal_node->cost);
-    return false;
-  }
 
   std::priority_queue<Node*, std::vector<Node*>, NodeCompare> open_set;
   std::unordered_map<int, Node*> closed_set;
@@ -101,10 +99,11 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
   open_set.push(start_node);
 
   printf("start searching\n");
-
+  int iterations = 0;
   while (!open_set.empty()) {
     Node* current_node = open_set.top();
     open_set.pop();
+    iterations++;
 
     if (current_node->idx == goal_node->idx) {
       while (current_node->parent != nullptr) {
@@ -125,48 +124,88 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
 
     closed_set[GetHash(current_node->idx)] = current_node;
 
-    // int layer = current_node->layer;
-    // if (current_node->ele > 0.5) {
-    //   layer = std::min(layer + 1, max_layers_ - 1);
-    // } else if (current_node->ele < -0.5) {
-    //   layer = std::max(layer - 1, 0);
-    // }
-    int layer = DecideLayer(current_node);
+    // Determine which layers to explore
+    std::vector<int> candidate_layers;
+
+    // Always explore current layer
+    candidate_layers.push_back(current_node->layer);
+
+    // Use DecideLayer for elevation-based transitions
+    int primary_layer = DecideLayer(current_node);
+    if (primary_layer != current_node->layer) {
+      candidate_layers.push_back(primary_layer);
+    }
+
+    // Goal-directed layer exploration: if goal is on different layer, try moving towards it
+    int layer_diff = goal_node->layer - current_node->layer;
+    if (layer_diff != 0) {
+      int target_layer = current_node->layer + (layer_diff > 0 ? 1 : -1);
+      if (target_layer >= 0 && target_layer < max_layers_) {
+        const Node& check = grid_map_[target_layer][current_node->idx[1]][current_node->idx[2]];
+        // Only explore if height difference is reasonable
+        if (std::abs(check.height - current_node->height) <= 0.5) {
+          // Avoid duplicates
+          bool already_added = false;
+          for (int l : candidate_layers) {
+            if (l == target_layer) {
+              already_added = true;
+              break;
+            }
+          }
+          if (!already_added) {
+            candidate_layers.push_back(target_layer);
+          }
+        }
+      }
+    }
+
+    if (iterations == 1) {
+      printf("First iteration: current_layer=%d, primary_layer=%d, candidate_layers_size=%zu\n",
+             current_node->layer, primary_layer, candidate_layers.size());
+    }
 
     int i, j = 0;
     double tentative_g = 0.0;
-    for (const auto& neighbor : kNeighbors) {
-      i = current_node->idx[1] + neighbor[0];
-      j = current_node->idx[2] + neighbor[1];
 
-      if (i < 0 || i >= max_y_ || j < 0 || j >= max_x_) {
-        continue;
-      }
+    // Expand neighbors on all candidate layers
+    for (int layer : candidate_layers) {
+      for (const auto& neighbor : kNeighbors) {
+        i = current_node->idx[1] + neighbor[0];
+        j = current_node->idx[2] + neighbor[1];
 
-      auto neighbor_node = &grid_map_[layer][i][j];
+        if (i < 0 || i >= max_y_ || j < 0 || j >= max_x_) {
+          continue;
+        }
 
+        auto neighbor_node = &grid_map_[layer][i][j];
+
+      // Strict blocking for high-cost areas with original logic
       if (neighbor_node->cost > cost_threshold_) {
-        if (abs(neighbor_node->ele) < 0.5) {
+        if (std::abs(neighbor_node->ele) < 0.5) {
+          // High cost without elevation change -> BLOCK (obstacle)
           continue;
         } else {
-          if (std::abs(neighbor_node->height - current_node->height) > 0.3) {
-            continue;
+          // High cost with elevation change (stairs) -> allow only if physically feasible
+          double height_diff = std::abs(neighbor_node->height - current_node->height);
+          if (height_diff > 0.4) {
+            continue;  // Block if height change too large
           }
         }
       }
 
-      // if ((neighbor_node->cost > cost_threshold_) ||
-      //     std::abs(neighbor_node->height - current_node->height) > 0.3) {
-      //   continue;
-      // }
-
       auto diff = neighbor_node->idx - current_node->idx;
+
+      // Calculate traversal cost based on actual distance
+      // For horizontal movement, use grid distance (diff[1] and diff[2])
+      // For vertical, use actual height difference
+      double horizontal_dist = std::sqrt(diff[1] * diff[1] + diff[2] * diff[2]);
+      double vertical_dist = std::abs(neighbor_node->height - current_node->height) / resolution_;
+      double distance_cost = std::sqrt(horizontal_dist * horizontal_dist + vertical_dist * vertical_dist);
+
+      // Apply cost penalty smoothly - no sharp cutoffs
       double step_cost = step_cost_weight_ * neighbor_node->cost;
-      if (step_cost < 5) step_cost = 0.0;
-      tentative_g =
-          current_node->g +
-          std::sqrt(diff[0] * diff[0] + diff[1] * diff[1] + diff[2] * diff[2]) +
-          step_cost;
+
+      tentative_g = current_node->g + distance_cost + step_cost;
 
       auto p_neighbor = closed_set.find(GetHash(neighbor_node->idx));
       if (p_neighbor != closed_set.end()) {
@@ -181,13 +220,14 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
         neighbor_node->parent = current_node;
         open_set.push(neighbor_node);
       }
-    }
-  }
+      }  // End neighbor loop
+    }  // End layer loop
+  }  // End while loop
 
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
       std::chrono::high_resolution_clock::now() - t0);
-  printf("path not found\n, time elapsed: %f ms\n",
-         duration.count() / 1000.0);
+  printf("path not found after %d iterations, time elapsed: %f ms\n",
+         iterations, duration.count() / 1000.0);
   if (debug_) {
     ConvertClosedSetToMatrix(closed_set);
   }
@@ -199,9 +239,35 @@ int Astar::DecideLayer(const Node* cur_node) const {
   int i = cur_node->idx[1];
   int j = cur_node->idx[2];
   double cur_height = cur_node->height;
+  double cur_ele = cur_node->ele;
 
   int true_layer = layer;
 
+  // Check current node's elevation indicator first
+  if (cur_ele > 0.5) {
+    // Current node indicates upward stairs
+    int candidate = layer + 1;
+    if (candidate < max_layers_) {
+      const Node& check = grid_map_[candidate][i][j];
+      if (std::abs(check.height - cur_height) <= 0.5) {
+        return candidate;
+      }
+    }
+  } else if (cur_ele < -0.5) {
+    // Current node indicates downward stairs
+    int candidate = layer - 1;
+    if (candidate >= 0) {
+      const Node& check = grid_map_[candidate][i][j];
+      if (std::abs(check.height - cur_height) <= 0.5) {
+        return candidate;
+      }
+    }
+  }
+
+  // If no clear indicator at current position, check nearby layers
+  bool found_transition = false;
+
+  // First pass: try with tight constraint (0.2m)
   for (const auto offset : search_layers_offset_) {
     int cur_layer = layer + offset;
 
@@ -211,16 +277,59 @@ int Astar::DecideLayer(const Node* cur_node) const {
 
     const Node& search_node = grid_map_[cur_layer][i][j];
 
-    if (abs(search_node.height - cur_height) > 0.2) {
+    if (std::abs(search_node.height - cur_height) > 0.2) {
       continue;
     }
 
     if (search_node.ele > 0.5) {
       true_layer = std::min(cur_layer + 1, max_layers_ - 1);
+      found_transition = true;
       break;
     } else if (search_node.ele < -0.5) {
       true_layer = std::max(cur_layer - 1, 0);
+      found_transition = true;
       break;
+    }
+  }
+
+  // Second pass: if no transition found and current layer has high cost, try with relaxed constraint
+  if (!found_transition && grid_map_[layer][i][j].cost >= cost_threshold_) {
+    for (const auto offset : search_layers_offset_) {
+      int cur_layer = layer + offset;
+
+      if (cur_layer < 0 || cur_layer >= max_layers_) {
+        continue;
+      }
+
+      const Node& search_node = grid_map_[cur_layer][i][j];
+
+      // Relaxed height check: 0.6m tolerance as fallback
+      double height_diff = std::abs(search_node.height - cur_height);
+      if (height_diff > 0.6) {
+        continue;
+      }
+
+      // Prefer layers with lower cost
+      if (search_node.cost < grid_map_[layer][i][j].cost) {
+        int candidate_layer = cur_layer;
+
+        if (search_node.ele > 0.5) {
+          candidate_layer = std::min(cur_layer + 1, max_layers_ - 1);
+        } else if (search_node.ele < -0.5) {
+          candidate_layer = std::max(cur_layer - 1, 0);
+        }
+
+        // Safety check: prevent cliff drops - don't jump more than 2 layers at once
+        int layer_jump = std::abs(candidate_layer - layer);
+        if (layer_jump <= 2) {
+          // Additional check: validate the target layer height
+          const Node& candidate_check = grid_map_[candidate_layer][i][j];
+          if (std::abs(candidate_check.height - cur_height) <= 0.6) {
+            true_layer = candidate_layer;
+            break;
+          }
+        }
+      }
     }
   }
 
