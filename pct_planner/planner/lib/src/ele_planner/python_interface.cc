@@ -15,6 +15,12 @@ PYBIND11_MODULE(ele_planner, m) {
       .def("debug", &OfflineElePlanner::Debug)
       .def("set_reference_height", &OfflineElePlanner::SetReferenceHeight)
       .def("set_max_iterations", &OfflineElePlanner::set_max_iterations)
+      .def("set_sample_interval", &OfflineElePlanner::set_sample_interval)
+      .def("set_interpolate_num", &OfflineElePlanner::set_interpolate_num)
+      .def("set_lambda_initial", &OfflineElePlanner::set_lambda_initial)
+      .def("set_qc_position", &OfflineElePlanner::set_qc_position)
+      .def("set_qc_heading", &OfflineElePlanner::set_qc_heading)
+      .def("set_path_debug", &OfflineElePlanner::set_path_debug)
       .def("get_path_finder", &OfflineElePlanner::get_path_finder)
       .def("get_map", &OfflineElePlanner::get_map)
       .def("get_trajectory_optimizer",

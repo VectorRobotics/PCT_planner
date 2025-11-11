@@ -5,7 +5,6 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /VGraph1/Namespaces1
-        - /PointCloud21
       Splitter Ratio: 0.8294117450714111
     Tree Height: 1485
   - Class: rviz_common/Selection
@@ -452,7 +451,7 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /viz_viewpoint_extend_topic
       Value: false
-    - Alpha: 1
+    - Alpha: 0.30000001192092896
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
         Max Value: 10
@@ -469,7 +468,7 @@ Visualization Manager:
       Max Color: 255; 255; 255
       Max Intensity: 80
       Min Color: 0; 0; 0
-      Min Intensity: 0.018121792003512383
+      Min Intensity: 0.04235253855586052
       Name: PointCloud2
       Position Transformer: XYZ
       Selectable: true
@@ -613,25 +612,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 21.99784278869629
+      Distance: 17.947858810424805
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 4.55375862121582
-        Y: 5.131728172302246
-        Z: -2.831573009490967
+        X: 3.076874017715454
+        Y: -6.433898448944092
+        Z: -1.4248881340026855
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.36979734897613525
+      Pitch: 0.5647972822189331
       Target Frame: map
       Value: Orbit (rviz)
-      Yaw: 2.1504290103912354
+      Yaw: 3.105480432510376
     Saved: ~
 Window Geometry:
   Displays:

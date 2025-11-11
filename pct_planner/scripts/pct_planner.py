@@ -74,19 +74,17 @@ class PCTPlanner:
 
         # Statistical outlier removal
         # Removes points that are further away from their neighbors compared to the average
-        pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=20, std_ratio=2.0)
+        pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=10, std_ratio=2.0)
 
         # Radius outlier removal
         # Removes points that have few neighbors in a given radius
-        pcd, _ = pcd.remove_radius_outlier(nb_points=10, radius=0.5)
+        pcd, _ = pcd.remove_radius_outlier(nb_points=10, radius=0.2)
 
         # Convert back to numpy array
         points = np.asarray(pcd.points, dtype=np.float32)
 
         min_xyz = np.min(points, axis=0)
         max_xyz = np.max(points, axis=0)
-
-        min_xyz[2] = self.tomo_config.ground_h
 
         if map_center is None:
             map_center = ((min_xyz[:2] + max_xyz[:2]) / 2).astype(np.float32)

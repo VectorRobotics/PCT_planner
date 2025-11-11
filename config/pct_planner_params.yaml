@@ -36,13 +36,13 @@
     # Default 30 deg ≈ 58% grade
     # Recommended: 20-35 degrees for most robots
     # MATCHES tomography.py default (0.36 radians = 20.63 degrees)
-    slope_max: 0.6
+    slope_max: 0.36
 
     # step_max: Maximum step height (meters)
     # Maximum vertical discontinuity the robot can traverse
     # Should match robot's physical step-climbing capability
     # MATCHES tomography.py default
-    step_max: 0.5
+    step_max: 0.3
 
     # standable_ratio: Proportion of standable cells required in kernel (0.0-1.0)
     # Higher values = more conservative, requires more stable terrain
@@ -92,3 +92,4 @@
     # Lower values = gentler lookahead adjustment
     # Typical range: 0.5-2.0, recommended: 1.0
     curvature_scale: 1.5
+

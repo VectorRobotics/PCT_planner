@@ -40,6 +40,33 @@ class OfflineElePlanner {
 
   void set_max_iterations(int max_iterations) {
     trajectory_optimizer_.set_max_iterations(max_iterations);
+    trajectory_optimizer_wnoj_.set_max_iterations(max_iterations);
+  }
+
+  void set_sample_interval(int sample_interval) {
+    trajectory_optimizer_.set_sample_interval(sample_interval);
+    trajectory_optimizer_wnoj_.set_sample_interval(sample_interval);
+  }
+
+  void set_interpolate_num(int interpolate_num) {
+    trajectory_optimizer_.set_interpolate_num(interpolate_num);
+    trajectory_optimizer_wnoj_.set_interpolate_num(interpolate_num);
+  }
+
+  void set_lambda_initial(double lambda_initial) {
+    trajectory_optimizer_wnoj_.set_lambda_initial(lambda_initial);
+  }
+
+  void set_qc_position(double qc_position) {
+    trajectory_optimizer_wnoj_.set_qc_position(qc_position);
+  }
+
+  void set_qc_heading(double qc_heading) {
+    trajectory_optimizer_wnoj_.set_qc_heading(qc_heading);
+  }
+
+  void set_path_debug(bool debug) {
+    path_finder_.Debug(debug);
   }
 
   const Astar& get_path_finder() const { return path_finder_; }

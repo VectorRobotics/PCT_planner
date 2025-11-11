@@ -110,6 +110,31 @@ class TomogramPlanner(object):
             -trav_gx.reshape(-1, trav_gx.shape[-1]).astype(np.double)
         )
 
+        # Configure smoothing parameters from config
+        if hasattr(self.cfg.planner, 'sample_interval'):
+            self.planner.set_sample_interval(int(self.cfg.planner.sample_interval))
+        if hasattr(self.cfg.planner, 'interpolate_num'):
+            self.planner.set_interpolate_num(int(self.cfg.planner.interpolate_num))
+        if hasattr(self.cfg.planner, 'max_iterations'):
+            self.planner.set_max_iterations(int(self.cfg.planner.max_iterations))
+        if hasattr(self.cfg.planner, 'lambda_initial'):
+            self.planner.set_lambda_initial(float(self.cfg.planner.lambda_initial))
+        if hasattr(self.cfg.planner, 'qc_position'):
+            self.planner.set_qc_position(float(self.cfg.planner.qc_position))
+        if hasattr(self.cfg.planner, 'qc_heading'):
+            self.planner.set_qc_heading(float(self.cfg.planner.qc_heading))
+
+        # Configure debug flags
+        if hasattr(self.cfg.planner, 'enable_path_debug'):
+            enable_path_debug = bool(self.cfg.planner.enable_path_debug)
+            print(f"[Config] Setting enable_path_debug: {enable_path_debug}")
+            self.planner.set_path_debug(enable_path_debug)
+        if hasattr(self.cfg.planner, 'enable_optimizer_debug'):
+            enable_optimizer_debug = bool(self.cfg.planner.enable_optimizer_debug)
+            print(f"[Config] Setting enable_optimizer_debug: {enable_optimizer_debug}")
+            if enable_optimizer_debug:
+                self.planner.debug()
+
     def plan(self, start_pos, end_pos, start_z=None, end_z=None):
         # Calculate slice index from Z coordinate
         if start_z is not None:

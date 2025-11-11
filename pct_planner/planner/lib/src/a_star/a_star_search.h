@@ -62,6 +62,7 @@ class Astar {
   void Reset();
 
   void Debug() { debug_ = true; }
+  void Debug(bool enable) { debug_ = enable; }
 
   bool Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal);
 

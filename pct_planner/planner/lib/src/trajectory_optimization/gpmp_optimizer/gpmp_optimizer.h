@@ -38,6 +38,22 @@ class GPMPOptimizer {
     sample_interval_ = sample_interval;
   }
 
+  void set_interpolate_num(const int interpolate_num) {
+    interpolate_num_ = interpolate_num;
+  }
+
+  void set_lambda_initial(const double lambda_initial) {
+    lambda_initial_ = lambda_initial;
+  }
+
+  void set_qc_position(const double qc_position) {
+    qc_position_ = qc_position;
+  }
+
+  void set_qc_heading(const double qc_heading) {
+    qc_heading_ = qc_heading;
+  }
+
   void SetDebug(const bool flag) { debug_ = flag; }
 
  protected:
@@ -64,6 +80,9 @@ class GPMPOptimizer {
   int max_iterations_ = 100;
   double max_heading_rate_ = 0.5;
   double reference_height_ = 0.1;
+  double lambda_initial_ = 200.0;
+  double qc_position_ = 0.1;
+  double qc_heading_ = 0.01;
 
   HeightSmoother height_smoother_;
 };

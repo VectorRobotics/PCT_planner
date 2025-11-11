@@ -35,6 +35,10 @@ class GPMPOptimizerWnoa {
     sample_interval_ = sample_interval;
   }
 
+  void set_interpolate_num(const int interpolate_num) {
+    interpolate_num_ = interpolate_num;
+  }
+
   void SetDebug(const bool flag) { debug_ = flag; }
 
  protected:

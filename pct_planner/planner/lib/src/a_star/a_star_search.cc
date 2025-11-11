@@ -98,8 +98,17 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
 
   open_set.push(start_node);
 
-  printf("start searching\n");
+  printf("[A*] Start searching: start=[%d,%d,%d] (layer=%d), goal=[%d,%d,%d] (layer=%d)\n",
+         start[0], start[1], start[2], start[0], goal[0], goal[1], goal[2], goal[0]);
+  if (debug_) {
+    printf("[A*] Start height=%.2f, goal height=%.2f\n",
+           start_node->height, goal_node->height);
+    printf("[A*] cost_threshold=%.1f, step_cost_weight=%.2f\n",
+           cost_threshold_, step_cost_weight_);
+  }
+
   int iterations = 0;
+  int layer_transitions = 0;
   while (!open_set.empty()) {
     Node* current_node = open_set.top();
     open_set.pop();
@@ -117,8 +126,27 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
       if (debug_) ConvertClosedSetToMatrix(closed_set);
       auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::high_resolution_clock::now() - t0);
-      printf("path found, time elapsed: %f ms\n",
-             duration.count() / 1000.0);
+      printf("[A*] Path found: %zu waypoints, %d iterations, %d layer transitions, %.2fms\n",
+             search_result_.size(), iterations, layer_transitions, duration.count() / 1000.0);
+
+      if (debug_) {
+        // Analyze path characteristics
+        int consecutive_layer_changes = 0;
+        int max_consecutive_changes = 0;
+        int current_streak = 0;
+        for (size_t i = 1; i < search_result_.size(); ++i) {
+          if (search_result_[i]->layer != search_result_[i-1]->layer) {
+            consecutive_layer_changes++;
+            current_streak++;
+            max_consecutive_changes = std::max(max_consecutive_changes, current_streak);
+          } else {
+            current_streak = 0;
+          }
+        }
+        printf("[A*] Path layer changes: %d total, max %d consecutive\n",
+               consecutive_layer_changes, max_consecutive_changes);
+      }
+
       return true;
     }
 
@@ -134,6 +162,12 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
     int primary_layer = DecideLayer(current_node);
     if (primary_layer != current_node->layer) {
       candidate_layers.push_back(primary_layer);
+      layer_transitions++;
+      if (debug_ && iterations % 100 == 0) {
+        printf("[A*] Layer transition at iter %d: %d->%d (height=%.2f, cost=%.1f)\n",
+               iterations, current_node->layer, primary_layer,
+               current_node->height, current_node->cost);
+      }
     }
 
     // Goal-directed layer exploration: if goal is on different layer, try moving towards it
@@ -179,16 +213,13 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
 
         auto neighbor_node = &grid_map_[layer][i][j];
 
-      // Strict blocking for high-cost areas with original logic
       if (neighbor_node->cost > cost_threshold_) {
         if (std::abs(neighbor_node->ele) < 0.5) {
-          // High cost without elevation change -> BLOCK (obstacle)
           continue;
         } else {
-          // High cost with elevation change (stairs) -> allow only if physically feasible
           double height_diff = std::abs(neighbor_node->height - current_node->height);
           if (height_diff > 0.4) {
-            continue;  // Block if height change too large
+            continue;
           }
         }
       }
@@ -226,9 +257,10 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
 
   auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
       std::chrono::high_resolution_clock::now() - t0);
-  printf("path not found after %d iterations, time elapsed: %f ms\n",
+  printf("[A*] Path NOT found after %d iterations, %.2fms [FAILURE]\n",
          iterations, duration.count() / 1000.0);
   if (debug_) {
+    printf("[A*] Explored %zu nodes before giving up\n", closed_set.size());
     ConvertClosedSetToMatrix(closed_set);
   }
   return false;
