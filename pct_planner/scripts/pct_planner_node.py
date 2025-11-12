@@ -45,17 +45,11 @@ class PCTPlannerNode(Node):
 
         # Waypoint following parameters
         self.declare_parameter('lookahead_distance', 2.0)
-        self.declare_parameter('min_lookahead_distance', 0.5)
-        self.declare_parameter('curvature_adaptive', True)
-        self.declare_parameter('curvature_scale', 1.0)
 
         # Get mode and parameters
         self.mode = self.get_parameter('mode').value
         self.tomogram_path = self.get_parameter('tomogram_path').value
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
-        self.min_lookahead_distance = self.get_parameter('min_lookahead_distance').value
-        self.curvature_adaptive = self.get_parameter('curvature_adaptive').value
-        self.curvature_scale = self.get_parameter('curvature_scale').value
 
         # Validate mode
         if self.mode not in ['slam', 'relocalization']:
@@ -289,10 +283,7 @@ class PCTPlannerNode(Node):
         try:
             waypoint_msg = get_waypoint_from_traj(
                 self.current_path, self.current_odom,
-                lookahead_dist=self.lookahead_distance,
-                min_lookahead_dist=self.min_lookahead_distance,
-                curvature_adaptive=self.curvature_adaptive,
-                curvature_scale=self.curvature_scale
+                lookahead_dist=self.lookahead_distance
             )
 
             if waypoint_msg is not None:
