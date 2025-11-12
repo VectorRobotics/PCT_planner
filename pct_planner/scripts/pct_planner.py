@@ -163,14 +163,23 @@ class PCTPlanner:
         )
         self.current_metadata = tomogram_metadata
 
-    def load_tomogram(self, tomogram_name: str) -> None:
-        self.planner.loadTomogram(tomogram_name)
-        self.current_tomogram_file = tomogram_name
+    def load_tomogram(self, tomogram_path: str) -> None:
+        """Load tomogram from path. Accepts absolute path or name (searches in tomogram_dir)."""
+        # Check if it's an absolute path to an existing file
+        if os.path.isabs(tomogram_path) and os.path.exists(tomogram_path):
+            path = tomogram_path
+        else:
+            # Treat as name, search in tomogram_dir
+            name = tomogram_path.replace('.pickle', '')
+            path = os.path.join(self.tomogram_dir, f"{name}.pickle")
+            if not os.path.exists(path):
+                raise FileNotFoundError(f"Tomogram not found: {path}")
 
-        tomogram_path = os.path.join(self.tomogram_dir, f"{tomogram_name}.pickle")
-        if os.path.exists(tomogram_path):
-            with open(tomogram_path, 'rb') as f:
-                self.current_metadata = pickle.load(f)
+        with open(path, 'rb') as f:
+            self.current_metadata = pickle.load(f)
+
+        self.load_tomogram_direct(self.current_metadata)
+        self.current_tomogram_file = os.path.basename(path)
 
     def plan_path(
         self,

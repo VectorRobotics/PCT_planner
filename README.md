@@ -135,35 +135,113 @@ ros2 launch vehicle_simulator system_bagfile_with_route_planner.launch use_pct_p
 
 ### Subscribed Topics
 
-- `/explored_areas` (sensor_msgs/PointCloud2) - Live point cloud map from SLAM
+- `/explored_areas` (sensor_msgs/PointCloud2) - Live point cloud map from SLAM (**SLAM mode only**)
 - `/state_estimation` (nav_msgs/Odometry) - Robot odometry
 - `/goal_pose` (geometry_msgs/PoseStamped) - Goal position
 
 ### Published Topics
 
-- `/global_path` (nav_msgs/Path) - Planned 3D trajectory
+- `/global_path` (nav_msgs/Path) - Planned 3D trajectory (latching)
 - `/way_point` (geometry_msgs/PointStamped) - Next waypoint for local planner (with adaptive lookahead)
-- `/tomogram` (sensor_msgs/PointCloud2) - 3D volumetric map visualization
-- `/tomogram_debug_grid` (nav_msgs/OccupancyGrid) - 2D cost grid for goal validation debugging
+- `/tomogram` (sensor_msgs/PointCloud2) - 3D volumetric map visualization (latching)
+- `/tomogram_debug_grid` (nav_msgs/OccupancyGrid) - 2D cost grid for goal validation debugging (latching)
+
+## Operating Modes
+
+The PCT Planner supports two operating modes configured in `config/pct_planner_params.yaml`:
+
+### 1. SLAM Mode (Default)
+
+Real-time tomogram building from live point cloud streams:
+- Subscribes to `/explored_areas` for continuous map updates
+- Automatically builds and updates tomogram as new data arrives
+- Suitable for online navigation in unknown environments
+
+```yaml
+mode: 'slam'
+```
+
+### 2. Relocalization Mode
+
+Uses pre-saved tomogram for navigation in known environments:
+- Loads a pre-built tomogram pickle file from absolute path
+- Publishes tomogram once with latching (no map subscription)
+- More efficient for repeated navigation in mapped areas
+- Requires `tomogram_path` parameter (absolute path to pickle file)
+
+```yaml
+mode: 'relocalization'
+tomogram_path: '/path/to/map_tomogram.pickle'
+```
+
+## PCD to Tomogram Converter
+
+A standalone utility to convert PCD files or ROS2 PointCloud2 topics to tomogram pickle files for use in relocalization mode.
+
+**Note**: Requires building the package and sourcing the workspace first:
+```bash
+colcon build --symlink-install --packages-select pct_planner
+source install/setup.bash
+```
+
+### From PCD File
+
+```bash
+# Basic usage
+ros2 run pct_planner pcd_to_tomogram.py map.pcd
+
+# With custom output path
+ros2 run pct_planner pcd_to_tomogram.py map.pcd -o /path/to/output_tomogram.pickle
+
+# With custom config file
+ros2 run pct_planner pcd_to_tomogram.py map.pcd -c /path/to/custom_params.yaml
+```
+
+### From ROS2 Topic
+
+Subscribe to a PointCloud2 topic and convert a single message to tomogram:
+
+```bash
+# Subscribe to default topic (/overall_map)
+ros2 run pct_planner pcd_to_tomogram.py
+
+# Subscribe to custom topic
+ros2 run pct_planner pcd_to_tomogram.py -t /explored_areas
+
+# With custom output path
+ros2 run pct_planner pcd_to_tomogram.py -t /overall_map -o my_map_tomogram.pickle
+```
+
+The converter:
+- Loads tomogram parameters from the same YAML config as the planner node
+- Supports both PCD file input and ROS2 topic subscription
+- For files: Appends `_tomogram` to the output filename (e.g., `map.pcd` → `map_tomogram.pickle`)
+- For topics: Receives one message then exits automatically
+- Can be used to pre-process maps for faster relocalization startup
 
 ## Configuration
 
 Parameters can be configured in `config/pct_planner_params.yaml`:
 
+### Operating Mode Parameters
+
+- `mode`: Operation mode - `'slam'` or `'relocalization'` (default: `'slam'`)
+- `tomogram_path`: Absolute path to tomogram pickle file (required for relocalization mode)
+
 ### Tomography Parameters
 
-- `resolution`: Horizontal grid resolution (default: 0.15m)
-- `slice_dh`: Vertical slice thickness (default: 0.5m)
-- `slope_max`: Maximum traversable slope in radians (default: 0.6 rad ≈ 34°)
-- `step_max`: Maximum step height (default: 0.5m)
+- `resolution`: Horizontal grid resolution (default: 0.075m)
+- `slice_dh`: Vertical slice thickness (default: 0.4m)
+- `slope_max`: Maximum traversable slope in radians (default: 0.36 rad ≈ 20.6°)
+- `step_max`: Maximum step height (default: 0.3m)
 - `cost_barrier`: Cost threshold for impassable terrain (default: 80.0)
 
 ### Waypoint Following Parameters (Adaptive Lookahead)
 
-- `lookahead_distance`: Maximum lookahead on straight paths (default: 2.0m)
+- `lookahead_distance`: Maximum lookahead on straight paths (default: 4.0m)
 - `min_lookahead_distance`: Minimum lookahead on tight curves (default: 0.5m)
 - `curvature_adaptive`: Enable curvature-based lookahead scaling (default: true)
-- `curvature_scale`: Sensitivity to path curvature (default: 1.0, range: 0.5-2.0)
+- `curvature_scale`: Sensitivity to path curvature (default: 1.5, range: 0.5-2.0)
 
 ## Features
 

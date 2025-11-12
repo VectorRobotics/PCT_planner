@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'pct_planner_node.py = pct_planner.scripts.pct_planner_node:main',
             'pct_planner_visualizer.py = pct_planner.scripts.pct_planner_visualizer:main',
+            'pcd_to_tomogram.py = pct_planner.scripts.pcd_to_tomogram:main',
         ],
     },
 )

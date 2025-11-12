@@ -5,12 +5,12 @@ class ConfigPlanner():
     safe_cost_margin = 15.0  # Safety margin for cost calculations
 
     # Smoothing parameters (GPMP Optimizer)
-    sample_interval = 5  # Reduced from 10 to keep more A* waypoints, reduce obstacle collisions
+    sample_interval = 3
     interpolate_num = 8
     max_iterations = 100
     lambda_initial = 10.0  # Optimal value: 5.0 too aggressive, 200.0 too conservative
-    qc_position = 0.1
-    qc_heading = 0.01
+    qc_position = 0.05  # Reduced from 0.1 for smoother position transitions
+    qc_heading = 0.005  # Reduced from 0.01 for smoother heading changes
 
     # Debug flags
     enable_path_debug = True  # Default to True to help with debugging
