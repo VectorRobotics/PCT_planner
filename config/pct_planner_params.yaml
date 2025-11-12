@@ -1,5 +1,16 @@
 /**:
   ros__parameters:
+    # Operating Mode
+    # mode: Operation mode for the planner
+    #   'slam': Real-time tomogram building from point cloud map (subscribes to /explored_areas)
+    #   'relocalization': Uses pre-loaded tomogram pickle file (no map subscription)
+    mode: 'relocalization'
+
+    # tomogram_path: Absolute path to tomogram pickle file (required for relocalization mode)
+    # Only used when mode is 'relocalization', ignored in 'slam' mode
+    # Example: '/path/to/map_tomogram.pickle'
+    tomogram_path: '/home/alex-lin/autonomy_stack_mecanum_wheel_platform/src/route_planner/PCT_planner/pct_planner/rsc/tomogram/map.pickle'
+
     # Map Resolution Parameters
     # resolution: Horizontal grid cell size (meters)
     # Lower values = higher detail but more computation
