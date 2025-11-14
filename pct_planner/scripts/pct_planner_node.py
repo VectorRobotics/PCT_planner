@@ -25,9 +25,10 @@ class PCTPlannerNode(Node):
     def __init__(self):
         super().__init__('pct_planner')
 
-        # Declare mode parameter (slam or relocalization)
-        self.declare_parameter('mode', 'slam')
-        self.declare_parameter('tomogram_path', '')  # Required for relocalization mode
+        # Declare localization mode parameter (boolean flag)
+        # True = localization mode with pre-loaded tomogram, False = SLAM mode with real-time map building
+        self.declare_parameter('local_mode', True)
+        self.declare_parameter('tomogram_path', '')  # Required when local_mode=True
 
         # Declare tomogram configuration parameters
         self.declare_parameter('resolution', 0.3)
@@ -46,19 +47,15 @@ class PCTPlannerNode(Node):
         # Waypoint following parameters
         self.declare_parameter('lookahead_distance', 2.0)
 
-        # Get mode and parameters
-        self.mode = self.get_parameter('mode').value
+        # Get parameters
+        self.local_mode = self.get_parameter('local_mode').value
         self.tomogram_path = self.get_parameter('tomogram_path').value
         self.lookahead_distance = self.get_parameter('lookahead_distance').value
 
-        # Validate mode
-        if self.mode not in ['slam', 'relocalization']:
-            self.get_logger().error(f"Invalid mode '{self.mode}'. Must be 'slam' or 'relocalization'")
-            raise ValueError(f"Invalid mode: {self.mode}")
-
-        if self.mode == 'relocalization' and not self.tomogram_path:
-            self.get_logger().error("Relocalization mode requires 'tomogram_path' parameter")
-            raise ValueError("Missing tomogram_path for relocalization mode")
+        # Validate parameters
+        if self.local_mode and not self.tomogram_path:
+            self.get_logger().error("Localization mode (local_mode=True) requires 'tomogram_path' parameter")
+            raise ValueError("Missing tomogram_path for localization mode")
 
         # Create tomogram configuration
         tomo_config = TomogramConfig(
@@ -113,12 +110,13 @@ class PCTPlannerNode(Node):
         self.pub_debug_grid = self.create_publisher(OccupancyGrid, '/tomogram_debug_grid', latching_qos)
 
         # Mode-specific initialization
-        if self.mode == 'slam':
-            self._init_slam_mode()
-        else:
+        if self.local_mode:
             self._init_relocalization_mode()
+        else:
+            self._init_slam_mode()
 
-        self.get_logger().info(f"PCT Planner ready in {self.mode} mode")
+        mode_str = "localization" if self.local_mode else "SLAM"
+        self.get_logger().info(f"PCT Planner ready in {mode_str} mode")
 
     def _init_slam_mode(self):
         """Initialize SLAM mode with map subscriber."""

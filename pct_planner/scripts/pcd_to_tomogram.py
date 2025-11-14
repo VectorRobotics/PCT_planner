@@ -8,6 +8,24 @@ import yaml
 import numpy as np
 import open3d as o3d
 
+# Set up library paths before importing pct_planner modules
+try:
+    from ament_index_python.packages import get_package_prefix
+    pkg_prefix = get_package_prefix('pct_planner')
+    planner_lib_dir = os.path.join(pkg_prefix, '..', '..', 'src', 'route_planner', 'PCT_planner', 'pct_planner', 'planner', 'lib')
+    gtsam_lib_dir = os.path.join(planner_lib_dir, '3rdparty', 'gtsam-4.1.1', 'install', 'lib')
+    smoothing_lib_dir = os.path.join(planner_lib_dir, 'build', 'src', 'common', 'smoothing')
+
+    existing_ld_path = os.environ.get('LD_LIBRARY_PATH', '')
+    new_ld_path = f"{gtsam_lib_dir}:{smoothing_lib_dir}:{existing_ld_path}"
+    os.environ['LD_LIBRARY_PATH'] = new_ld_path
+
+    existing_python_path = os.environ.get('PYTHONPATH', '')
+    new_python_path = f"{planner_lib_dir}:{existing_python_path}"
+    os.environ['PYTHONPATH'] = new_python_path
+except Exception as e:
+    print(f"Warning: Could not set up library paths: {e}", file=sys.stderr)
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import PointCloud2
