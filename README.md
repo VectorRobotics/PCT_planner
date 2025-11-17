@@ -135,7 +135,6 @@ ros2 launch vehicle_simulator system_bagfile_with_route_planner.launch use_pct_p
 
 ### Subscribed Topics
 
-- `/explored_areas` (sensor_msgs/PointCloud2) - Live point cloud map from SLAM (**SLAM mode only**)
 - `/state_estimation` (nav_msgs/Odometry) - Robot odometry
 - `/goal_pose` (geometry_msgs/PoseStamped) - Goal position
 
@@ -146,19 +145,26 @@ ros2 launch vehicle_simulator system_bagfile_with_route_planner.launch use_pct_p
 - `/tomogram` (sensor_msgs/PointCloud2) - 3D volumetric map visualization (latching)
 - `/tomogram_debug_grid` (nav_msgs/OccupancyGrid) - 2D cost grid for goal validation debugging (latching)
 
+### Services
+
+- `~/build_tomogram` (std_srvs/Trigger) - Manually trigger tomogram building from point cloud topic (**SLAM mode only**)
+
 ## Operating Modes
 
 The PCT Planner supports two operating modes configured in `config/pct_planner_params.yaml`:
 
 ### 1. SLAM Mode (Default)
 
-Real-time tomogram building from live point cloud streams:
-- Subscribes to `/explored_areas` for continuous map updates
-- Automatically builds and updates tomogram as new data arrives
-- Suitable for online navigation in unknown environments
+Manual tomogram building from point cloud topic:
+- Use the `~/build_tomogram` service to trigger tomogram generation
+- Reads one message from `/explored_areas` (configurable via `map_topic` parameter)
+- Builds tomogram on demand, giving you control over when maps are updated
+- Suitable for navigation with intermittent map updates
 
-```yaml
-mode: 'slam'
+
+**Trigger tomogram building:**
+```bash
+ros2 service call /pct_planner/build_tomogram std_srvs/srv/Trigger
 ```
 
 ### 2. Relocalization Mode
@@ -227,6 +233,7 @@ Parameters can be configured in `config/pct_planner_params.yaml`:
 
 - `mode`: Operation mode - `'slam'` or `'relocalization'` (default: `'slam'`)
 - `tomogram_path`: Absolute path to tomogram pickle file (required for relocalization mode)
+- `map_topic`: Point cloud topic for SLAM mode tomogram building (default: `'/explored_areas'`)
 
 ### Tomography Parameters
 
@@ -245,13 +252,13 @@ Parameters can be configured in `config/pct_planner_params.yaml`:
 
 ## Features
 
-### 1. Real-Time Tomogram Generation
+### 1. On-Demand Tomogram Generation
 
-The planner automatically builds and updates the 3D volumetric map from incoming point cloud data:
+The planner builds 3D volumetric maps when triggered via service call:
 
-```python
-# Tomogram is built asynchronously from /explored_areas topic
-# No manual PCD file processing needed
+```bash
+# Trigger tomogram building from point cloud topic
+ros2 service call /pct_planner/build_tomogram std_srvs/srv/Trigger
 ```
 
 ### 2. Adaptive Lookahead Waypoint Following
@@ -304,11 +311,12 @@ python3 plan.py --scene Building
 │   (LiDAR/SLAM)   │
 └────────┬─────────┘
          │ /explored_areas
+         │
     ┌────▼─────────────┐
     │  PCT Planner     │
     │  Node            │
     ├──────────────────┤
-    │ - Tomogram Gen   │
+    │ - Tomogram Gen   │◄──── ~/build_tomogram (service)
     │ - Path Planning  │
     │ - Goal Validation│
     │ - Waypoint Pub   │
@@ -326,7 +334,7 @@ This package has been integrated into the Mecanum Wheel Platform Autonomy Stack 
 
 ### Additional Features
 
-- **Real-time tomogram generation** from live point cloud streams (`/explored_areas`)
+- **On-demand tomogram generation** via service call (manual control)
 - **Adaptive lookahead waypoint following** with curvature-based scaling
 - **Goal validation** using BFS on traversability cost maps
 - **Seamless integration** with local planner via `/way_point` topic
@@ -361,7 +369,6 @@ ros2 launch vehicle_simulator system_bagfile_with_route_planner.launch use_pct_p
 ### ROS 2 Topics
 
 **Subscribed:**
-- `/explored_areas` - Live point cloud map
 - `/state_estimation` - Robot odometry
 - `/goal_pose` - Goal position
 
@@ -370,6 +377,9 @@ ros2 launch vehicle_simulator system_bagfile_with_route_planner.launch use_pct_p
 - `/way_point` - Next waypoint (adaptive lookahead)
 - `/tomogram` - 3D volumetric map
 - `/tomogram_debug_grid` - 2D cost grid (debug)
+
+**Services:**
+- `~/build_tomogram` - Trigger tomogram building (SLAM mode)
 
 ### Configuration
 
