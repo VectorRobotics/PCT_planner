@@ -14,6 +14,8 @@ from sensor_msgs_py import point_cloud2 as pc2
 from nav_msgs.msg import Odometry, Path, OccupancyGrid
 from geometry_msgs.msg import PoseStamped, PointStamped
 from std_msgs.msg import Header
+from std_srvs.srv import Trigger
+from visualization_msgs.msg import Marker
 
 # Import PCT planner and tomogram visualization utilities
 from pct_planner.scripts.pct_planner import PCTPlanner, TomogramConfig
@@ -103,12 +105,15 @@ class PCTPlannerNode(Node):
         # Subscribers (common to both modes)
         self.sub_odom = self.create_subscription(Odometry, '/state_estimation', self.odom_callback, odom_qos)
         self.sub_goal = self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
+        self.sub_clicked_point = self.create_subscription(PointStamped, '/clicked_point', self.clicked_point_callback, 10)
 
         # Publishers
         self.pub_path = self.create_publisher(Path, '/global_path', latching_qos)
         self.pub_waypoint = self.create_publisher(PointStamped, '/way_point', 10)
         self.pub_tomogram = self.create_publisher(PointCloud2, '/tomogram', latching_qos)
         self.pub_debug_grid = self.create_publisher(OccupancyGrid, '/tomogram_debug_grid', latching_qos)
+        self.pub_goal_pose = self.create_publisher(PoseStamped, '/goal_pose', 10)
+        self.pub_goal_marker = self.create_publisher(Marker, '/goal_marker', 10)
 
         # Mode-specific initialization
         if self.local_mode:
@@ -198,8 +203,21 @@ class PCTPlannerNode(Node):
         self.current_odom = msg
         self._publish_waypoint()
 
+    def clicked_point_callback(self, msg: PointStamped):
+        """Clicked point callback - converts to goal pose with zero orientation to skip safe goal."""
+        goal_pose = PoseStamped()
+        goal_pose.header = msg.header
+        goal_pose.pose.position = msg.point
+        # Set orientation to all zeros to indicate: skip safe goal adjustment + no goal yaw
+        goal_pose.pose.orientation.x = 0.0
+        goal_pose.pose.orientation.y = 0.0
+        goal_pose.pose.orientation.z = 0.0
+        goal_pose.pose.orientation.w = 0.0
+        self.pub_goal_pose.publish(goal_pose)
+        self.get_logger().info(f"Clicked point: ({msg.point.x:.2f}, {msg.point.y:.2f}, {msg.point.z:.2f})")
+
     def goal_callback(self, msg: PoseStamped):
-        """Goal callback - triggers path planning."""
+        """Goal callback - uses orientation to determine if safe goal adjustment is needed."""
         goal = (msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
         self._plan_path(goal)
 
@@ -217,8 +235,8 @@ class PCTPlannerNode(Node):
         finally:
             self.tomogram_processing = False
 
-    def _plan_path(self, goal: tuple):
-        """Plan path to goal with automatic goal adjustment to safe location."""
+    def _plan_path(self, goal: tuple, skip_safe_goal: bool = False):
+        """Plan path to goal with optional automatic goal adjustment to safe location."""
         if self.current_odom is None:
             self.get_logger().warn("Cannot plan path: missing odometry")
             return
@@ -231,8 +249,12 @@ class PCTPlannerNode(Node):
             pos = self.current_odom.pose.pose.position
             start_pose = (pos.x, pos.y, pos.z)
 
-            # Adjust goal to safe location
-            adjusted_goal = self._find_safe_goal(goal)
+            # Adjust goal to safe location (unless skipped for clicked points)
+            if skip_safe_goal:
+                adjusted_goal = goal
+                self.get_logger().info("Using exact clicked point as goal (no safe goal adjustment)")
+            else:
+                adjusted_goal = self._find_safe_goal(goal)
 
             # Plan path
             path_msg = self.planner.plan_path_to_ros(start_pose, adjusted_goal)
@@ -304,6 +326,34 @@ class PCTPlannerNode(Node):
                 self.pub_waypoint.publish(waypoint_msg)
         except Exception as e:
             self.get_logger().error(f"Waypoint extraction error: {e}")
+
+    def _publish_goal_marker(self, goal: tuple, frame_id: str = "map"):
+        """Publish red sphere marker for goal point."""
+        marker = Marker()
+        marker.header.frame_id = frame_id
+        marker.header.stamp = self.get_clock().now().to_msg()
+        marker.ns = "goal"
+        marker.id = 0
+        marker.type = Marker.SPHERE
+        marker.action = Marker.ADD
+
+        marker.pose.position.x = goal[0]
+        marker.pose.position.y = goal[1]
+        marker.pose.position.z = goal[2]
+        marker.pose.orientation.w = 1.0
+
+        marker.scale.x = 0.5
+        marker.scale.y = 0.5
+        marker.scale.z = 0.5
+
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.color.a = 0.9
+
+        marker.lifetime.sec = 0  # Persistent
+
+        self.pub_goal_marker.publish(marker)
 
     def publish_tomogram(self, metadata: dict):
         """Publish tomogram as PointCloud2 for visualization."""
