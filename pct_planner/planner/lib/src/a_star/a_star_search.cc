@@ -67,13 +67,9 @@ void Astar::Init(const double cost_threshold, const int num_layers,
 }
 
 void Astar::Reset() {
-  for (size_t i = 0; i < grid_map_.size(); ++i) {
-    for (size_t j = 0; j < grid_map_[i].size(); ++j) {
-      for (size_t k = 0; k < grid_map_[i][j].size(); ++k) {
-        grid_map_[i][j][k].Reset();
-      }
-    }
-  }
+  // O(1) reset - just increment generation counter
+  // Nodes will be lazily reset when accessed in the next search
+  search_generation_++;
 }
 
 int Astar::GetHash(const Eigen::Vector3i& idx) const {
@@ -83,17 +79,23 @@ int Astar::GetHash(const Eigen::Vector3i& idx) const {
 bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
   auto t0 = std::chrono::high_resolution_clock::now();
 
-  if (!search_result_.empty()) {
-    Reset();
-    search_result_.clear();
-  }
+  // O(1) reset via generation increment
+  Reset();
+  search_result_.clear();
 
   auto start_node = &grid_map_[start[0]][start[2]][start[1]];
   auto goal_node = &grid_map_[goal[0]][goal[2]][goal[1]];
-  start_node->g = 0.0;
 
+  // Lazily reset start node for this generation
+  start_node->ResetForGeneration(search_generation_);
+  start_node->g = 0.0;
+  start_node->f = 0.0;
+
+  // Lazily reset goal node
+  goal_node->ResetForGeneration(search_generation_);
 
   std::priority_queue<Node*, std::vector<Node*>, NodeCompare> open_set;
+  // Keep closed_set for debug visualization only
   std::unordered_map<int, Node*> closed_set;
 
   open_set.push(start_node);
@@ -112,7 +114,22 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
   while (!open_set.empty()) {
     Node* current_node = open_set.top();
     open_set.pop();
+
+    // Skip if already processed (node may be in queue multiple times)
+    if (current_node->in_closed_set) {
+      continue;
+    }
+
     iterations++;
+
+    // Check iteration limit
+    if (iterations > max_iterations_) {
+      auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::high_resolution_clock::now() - t0);
+      printf("[A*] Search aborted: exceeded %d iterations, %.2fms\n",
+             max_iterations_, duration.count() / 1000.0);
+      return false;
+    }
 
     if (current_node->idx == goal_node->idx) {
       while (current_node->parent != nullptr) {
@@ -150,7 +167,11 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
       return true;
     }
 
-    closed_set[GetHash(current_node->idx)] = current_node;
+    // Mark as processed
+    current_node->in_closed_set = true;
+    if (debug_) {
+      closed_set[GetHash(current_node->idx)] = current_node;
+    }
 
     // Determine which layers to explore
     std::vector<int> candidate_layers;
@@ -213,44 +234,44 @@ bool Astar::Search(const Eigen::Vector3i& start, const Eigen::Vector3i& goal) {
 
         auto neighbor_node = &grid_map_[layer][i][j];
 
-      if (neighbor_node->cost > cost_threshold_) {
-        if (std::abs(neighbor_node->ele) < 0.5) {
+        // Lazily reset neighbor for this search generation
+        neighbor_node->ResetForGeneration(search_generation_);
+
+        // Skip if already in closed set
+        if (neighbor_node->in_closed_set) {
           continue;
-        } else {
-          double height_diff = std::abs(neighbor_node->height - current_node->height);
-          if (height_diff > 0.4) {
+        }
+
+        if (neighbor_node->cost > cost_threshold_) {
+          if (std::abs(neighbor_node->ele) < 0.5) {
             continue;
+          } else {
+            double height_diff = std::abs(neighbor_node->height - current_node->height);
+            if (height_diff > 0.4) {
+              continue;
+            }
           }
         }
-      }
 
-      auto diff = neighbor_node->idx - current_node->idx;
+        // Calculate traversal cost - optimized with single sqrt
+        int di = neighbor_node->idx[1] - current_node->idx[1];
+        int dj = neighbor_node->idx[2] - current_node->idx[2];
+        double height_diff = neighbor_node->height - current_node->height;
+        double horizontal_dist_sq = di * di + dj * dj;
+        double vertical_dist_sq = (height_diff * height_diff) / (resolution_ * resolution_);
+        double distance_cost = std::sqrt(horizontal_dist_sq + vertical_dist_sq);
 
-      // Calculate traversal cost based on actual distance
-      // For horizontal movement, use grid distance (diff[1] and diff[2])
-      // For vertical, use actual height difference
-      double horizontal_dist = std::sqrt(diff[1] * diff[1] + diff[2] * diff[2]);
-      double vertical_dist = std::abs(neighbor_node->height - current_node->height) / resolution_;
-      double distance_cost = std::sqrt(horizontal_dist * horizontal_dist + vertical_dist * vertical_dist);
+        // Apply cost penalty smoothly - no sharp cutoffs
+        double step_cost = step_cost_weight_ * neighbor_node->cost;
 
-      // Apply cost penalty smoothly - no sharp cutoffs
-      double step_cost = step_cost_weight_ * neighbor_node->cost;
+        tentative_g = current_node->g + distance_cost + step_cost;
 
-      tentative_g = current_node->g + distance_cost + step_cost;
-
-      auto p_neighbor = closed_set.find(GetHash(neighbor_node->idx));
-      if (p_neighbor != closed_set.end()) {
-        if (tentative_g >= p_neighbor->second->g) {
-          continue;
+        if (tentative_g < neighbor_node->g) {
+          neighbor_node->g = tentative_g;
+          neighbor_node->f = tentative_g + GetHeuristic(neighbor_node, goal_node);
+          neighbor_node->parent = current_node;
+          open_set.push(neighbor_node);
         }
-      }
-
-      if (tentative_g < neighbor_node->g) {
-        neighbor_node->g = tentative_g;
-        neighbor_node->f = tentative_g + GetHeuristic(neighbor_node, goal_node);
-        neighbor_node->parent = current_node;
-        open_set.push(neighbor_node);
-      }
       }  // End neighbor loop
     }  // End layer loop
   }  // End while loop
