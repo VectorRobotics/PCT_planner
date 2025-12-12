@@ -3,10 +3,8 @@ import sys
 import pickle
 import numpy as np
 
-from utils import *
-
-sys.path.append('../')
-from lib import a_star, ele_planner, traj_opt
+from .utils import transTrajGrid2Map
+from ..lib import a_star, ele_planner, traj_opt
 
 rsg_root = os.path.dirname(os.path.abspath(__file__)) + '/../..'
 

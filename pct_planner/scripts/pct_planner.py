@@ -8,17 +8,8 @@ import open3d as o3d
 from typing import Tuple, Optional
 from dataclasses import dataclass
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PLANNER_SCRIPTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'planner', 'scripts'))
-PLANNER_LIB_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'planner', 'lib'))
-TOMOGRAPHY_SCRIPTS_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, '..', 'tomography', 'scripts'))
-
-sys.path.insert(0, PLANNER_SCRIPTS_DIR)
-sys.path.insert(0, PLANNER_LIB_DIR)
-sys.path.insert(0, TOMOGRAPHY_SCRIPTS_DIR)
-
-from planner_wrapper import TomogramPlanner
-from utils.vis_ros import traj2ros
+from pct_planner.planner.scripts.planner_wrapper import TomogramPlanner
+from pct_planner.planner.scripts.utils.vis_ros import traj2ros
 from pct_planner.planner.config.param import Config as PlannerConfig
 from pct_planner.tomography.scripts.tomogram import Tomogram
 
@@ -42,7 +33,7 @@ class TomogramConfig:
 
 class PCTPlanner:
     def __init__(self, tomogram_dir: Optional[str] = None, tomo_config: Optional[TomogramConfig] = None):
-        self.script_dir = SCRIPT_DIR
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.tomogram_dir = tomogram_dir or os.path.join(
             self.script_dir, '../pct_planner/rsc/tomogram'
         )

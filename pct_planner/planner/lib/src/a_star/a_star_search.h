@@ -16,10 +16,15 @@ class Node {
 
   bool operator==(const Node& other) const { return idx == other.idx; }
 
-  void Reset() {
-    f = 0.0;
-    g = 1e9;
-    parent = nullptr;
+  // Reset for a new search generation (called lazily, not for all nodes)
+  void ResetForGeneration(int generation) {
+    if (search_generation != generation) {
+      f = 1e9;
+      g = 1e9;
+      parent = nullptr;
+      in_closed_set = false;
+      search_generation = generation;
+    }
   }
 
   double f = 1e9;
@@ -28,6 +33,8 @@ class Node {
   double ele = 0;
   double cost = 0.0;
   int layer = 0;
+  int search_generation = 0;  // Generation counter for lazy reset
+  bool in_closed_set = false; // Track if node is in closed set
   Eigen::Vector3i idx = Eigen::Vector3i(0, 0, 0);  // layer, row, col
   Node* parent = nullptr;
 };
@@ -104,6 +111,9 @@ class Astar {
   MultiLayerGridMap grid_map_;
   double cost_threshold_ = 35;
   double step_cost_weight_ = 1.0;
+
+  int search_generation_ = 0;  // Incremented each search for lazy node reset
+  int max_iterations_ = 500000;  // Prevent infinite search
 
   int search_layer_depth_ = 1;
   std::vector<int> search_layers_offset_;

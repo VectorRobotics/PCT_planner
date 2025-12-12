@@ -5,6 +5,9 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, HistoryPolicy
 import numpy as np
 import threading
+from rclpy.wait_for_message import wait_for_message
+
+from std_srvs.srv import Trigger
 
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
@@ -77,6 +80,8 @@ class PCTPlannerNode(Node):
         # State variables
         self.current_odom = None
         self.current_path = None
+        self.tomogram_processing = False
+        self.tomogram_lock = threading.Lock()
         self.VISPROTO_I = None
         self.VISPROTO_P = None
 
@@ -120,32 +125,9 @@ class PCTPlannerNode(Node):
         self.get_logger().info(f"PCT Planner ready in {mode_str} mode")
 
     def _init_slam_mode(self):
-        """Initialize SLAM mode with service for manual tomogram building."""
-        # Subscribe to point cloud topic and cache latest message
-        map_qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
-        self.declare_parameter('map_topic', '/explored_areas')
-        self.map_topic = self.get_parameter('map_topic').value
-
-        self.latest_pointcloud = None
-        self.pointcloud_lock = threading.Lock()
-        self.sub_map = self.create_subscription(
-            PointCloud2,
-            self.map_topic,
-            self._cache_pointcloud_callback,
-            map_qos
-        )
-
-        self.srv_build_tomogram = self.create_service(
-            Trigger,
-            '~/build_tomogram',
-            self.build_tomogram_callback
-        )
-        self.get_logger().info(f"SLAM mode: Service ~/build_tomogram ready (using topic: {self.map_topic})")
+        """Initialize SLAM mode with service-triggered tomogram building."""
+        self.srv_build_tomogram = self.create_service(Trigger, '/build_tomogram', self.build_tomogram_service_callback)
+        self.get_logger().info("SLAM mode: Call /build_tomogram (std_srvs/Trigger) to build tomogram from /explored_areas")
 
     def _init_relocalization_mode(self):
         """Initialize relocalization mode with pre-loaded tomogram."""
@@ -165,57 +147,56 @@ class PCTPlannerNode(Node):
             self.get_logger().error(f"Failed to load tomogram: {e}")
             raise
 
-    def _cache_pointcloud_callback(self, msg: PointCloud2):
-        """Cache the latest point cloud message."""
-        with self.pointcloud_lock:
-            self.latest_pointcloud = msg
+    def build_tomogram_service_callback(self, request, response):
+        """Build a tomogram by getting one message from /explored_areas (SLAM mode only)."""
+        del request  # unused
+        if self.local_mode:
+            response.success = False
+            response.message = "Not available in localization mode (local_mode=True)"
+            return response
 
-    def build_tomogram_callback(self, _request, response):
-        """Service callback to manually build tomogram from cached point cloud."""
+        with self.tomogram_lock:
+            if self.tomogram_processing:
+                response.success = False
+                response.message = "Tomogram build already in progress"
+                return response
+            self.tomogram_processing = True
+
+        # Start background thread to wait for message and process
+        threading.Thread(target=self._build_tomogram_thread, daemon=True).start()
+
+        response.success = True
+        response.message = "Tomogram build started, waiting for /explored_areas..."
+        return response
+
+    def _build_tomogram_thread(self):
+        """Background thread that waits for point cloud and builds tomogram."""
         try:
-            self.get_logger().info(f"Building tomogram from cached point cloud")
 
-            # Get cached point cloud
-            with self.pointcloud_lock:
-                pointcloud_msg = self.latest_pointcloud
+            self.get_logger().info("Waiting for point cloud on /explored_areas...")
+            success, msg = wait_for_message(PointCloud2, self, '/explored_areas', time_to_wait=10.0)
 
-            if pointcloud_msg is None:
-                response.success = False
-                response.message = f"No point cloud received yet on {self.map_topic}"
-                self.get_logger().error(response.message)
-                return response
+            if not success:
+                self.get_logger().error("Timeout waiting for point cloud on /explored_areas")
+                self.tomogram_processing = False
+                return
 
-            # Process point cloud
-            points_list = list(pc2.read_points(pointcloud_msg, field_names=("x", "y", "z"), skip_nans=True))
+            points_list = list(pc2.read_points(msg, field_names=("x", "y", "z"), skip_nans=True))
             if len(points_list) < 1000:
-                response.success = False
-                response.message = f"Insufficient points: {len(points_list)} < 1000"
-                self.get_logger().warn(response.message)
-                return response
+                self.get_logger().warn(f"Point cloud too small ({len(points_list)} points), skipping")
+                self.tomogram_processing = False
+                return
 
             points = np.array(points_list, dtype=np.float32)[:, :3] if isinstance(points_list[0], tuple) else \
                      np.column_stack([np.array(points_list)['x'],
                                      np.array(points_list)['y'],
                                      np.array(points_list)['z']]).astype(np.float32)
 
-            # Build tomogram
-            self.get_logger().info(f"Building tomogram from {len(points)} points...")
-            metadata = self.planner.pointcloud_to_tomogram(points)
-            self.planner.load_tomogram_direct(metadata)
-            map_dim_x, map_dim_y = metadata['map_dim']
-            self.VISPROTO_I, self.VISPROTO_P = GRID_POINTS_XYZI(metadata['resolution'], map_dim_x, map_dim_y)
-            self.publish_tomogram(metadata)
-
-            response.success = True
-            response.message = f"Successfully built tomogram from {len(points)} points"
-            self.get_logger().info(response.message)
-            return response
+            self._process_tomogram_once(points)
 
         except Exception as e:
-            response.success = False
-            response.message = f"Failed to build tomogram: {str(e)}"
-            self.get_logger().error(response.message)
-            return response
+            self.get_logger().error(f"Error in tomogram build thread: {e}")
+            self.tomogram_processing = False
 
     def odom_callback(self, msg: Odometry):
         """Odometry callback - updates current pose and publishes waypoints."""
@@ -238,17 +219,21 @@ class PCTPlannerNode(Node):
     def goal_callback(self, msg: PoseStamped):
         """Goal callback - uses orientation to determine if safe goal adjustment is needed."""
         goal = (msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
-        ori = msg.pose.orientation
+        self._plan_path(goal)
 
-        # Publish goal marker
-        self._publish_goal_marker(goal, msg.header.frame_id)
-
-        # Check if orientation is all zeros (from clicked_point) - skip safe goal adjustment
-        if ori.x == 0.0 and ori.y == 0.0 and ori.z == 0.0 and ori.w == 0.0:
-            self.get_logger().info("Goal from clicked point - using exact location")
-            self._plan_path(goal, skip_safe_goal=True)
-        else:
-            self._plan_path(goal, skip_safe_goal=False)
+    def _process_tomogram_once(self, points_to_process: np.ndarray):
+        """Build a single tomogram from the provided point cloud (SLAM mode only)."""
+        try:
+            self.get_logger().info(f"Building tomogram from {len(points_to_process)} points...")
+            metadata = self.planner.pointcloud_to_tomogram(points_to_process)
+            self.planner.load_tomogram_direct(metadata)
+            map_dim_x, map_dim_y = metadata['map_dim']
+            self.VISPROTO_I, self.VISPROTO_P = GRID_POINTS_XYZI(metadata['resolution'], map_dim_x, map_dim_y)
+            self.publish_tomogram(metadata)
+        except Exception as e:
+            self.get_logger().error(f"Failed to build tomogram: {e}")
+        finally:
+            self.tomogram_processing = False
 
     def _plan_path(self, goal: tuple, skip_safe_goal: bool = False):
         """Plan path to goal with optional automatic goal adjustment to safe location."""

@@ -12,12 +12,10 @@ from std_msgs.msg import Header
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
 
-from tomogram import Tomogram
-from tomogram_viz import generate_tomogram_pointcloud
-
-sys.path.append('../')
-from config import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
-from config import Config
+from .tomogram import Tomogram
+from .tomogram_viz import generate_tomogram_pointcloud
+from ..config import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
+from ..config.param import Config
 
 rsg_root = os.path.dirname(os.path.abspath(__file__)) + '/../..'
 

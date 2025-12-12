@@ -5,16 +5,20 @@ ROOT_DIR=$(cd $(dirname "$0"); pwd)
 
 cd lib
 
-# rm -rf build
-mkdir build
+rm -rf build
+mkdir -p build
 
 cd build
 cmake ../ -DCMAKE_BUILD_TYPE=Release
 make -j6
 cp ./src/a_star/a_star*.so ../
+cp ./src/a_star/liba_star_search.so ../
 cp ./src/trajectory_optimization/traj_opt*.so ../
+cp ./src/trajectory_optimization/libgpmp_optimizer.so ../
 cp ./src/ele_planner/ele_planner*.so ../
+cp ./src/ele_planner/libele_planner_lib.so ../
 cp ./src/map_manager/py_map_manager*.so ../
+cp ./src/map_manager/libmap_manager.so ../
 cp ./src/common/smoothing/libcommon_smoothing.so ../
 cd ..
 

@@ -4,6 +4,19 @@ project(planning_core CXX)
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED true)
 
+# Make built shared libraries and pybind modules relocatable.
+# build.sh copies artifacts from lib/build/** into this directory (lib/),
+# so use $ORIGIN-based RPATH/RUNPATH to find sibling lib*.so and 3rdparty deps.
+set(_PCT_PLANNER_RPATH
+  "\$ORIGIN"
+  "\$ORIGIN/3rdparty/gtsam-4.1.1/install/lib"
+  "\$ORIGIN/3rdparty/osqp/install/lib"
+)
+set(CMAKE_BUILD_RPATH "${_PCT_PLANNER_RPATH}")
+set(CMAKE_INSTALL_RPATH "${_PCT_PLANNER_RPATH}")
+set(CMAKE_BUILD_RPATH_USE_ORIGIN ON)
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH OFF)
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()

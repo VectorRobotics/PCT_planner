@@ -1,4 +1,6 @@
 import numpy as np
+import os
+import sys
 
 try:
     import cupy as cp
@@ -11,8 +13,16 @@ try:
     from kernels import tomographyKernel, travKernel, inflationKernel
     KERNELS_AVAILABLE = True
 except ImportError:
-    KERNELS_AVAILABLE = False
-    print("[Tomogram] Warning: Kernels not available")
+    # Try adding the script directory to path for ROS2 launch compatibility
+    try:
+        _script_dir = os.path.dirname(os.path.abspath(__file__))
+        if _script_dir not in sys.path:
+            sys.path.insert(0, _script_dir)
+        from kernels import tomographyKernel, travKernel, inflationKernel
+        KERNELS_AVAILABLE = True
+    except ImportError:
+        KERNELS_AVAILABLE = False
+        print("[Tomogram] Warning: Kernels not available")
 
 if not CUDA_AVAILABLE:
     print("[Tomogram] Warning: CUDA not available, using CPU fallback")
