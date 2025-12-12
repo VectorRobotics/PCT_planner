@@ -6,11 +6,9 @@ import rclpy
 from rclpy.qos import QoSProfile
 from nav_msgs.msg import Path
 
-from utils import *
-from planner_wrapper import TomogramPlanner
-
-sys.path.append('../')
-from config import Config
+from .utils import traj2ros
+from .planner_wrapper import TomogramPlanner
+from ..config.param import Config
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--scene', type=str, default='Spiral', help='Name of the scene. Available: [\'Spiral\', \'Building\', \'Plaza\']')

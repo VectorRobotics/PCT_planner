@@ -5,7 +5,7 @@ cd ${ROOT_DIR}/lib/3rdparty/gtsam-4.1.1
 rm -rf build install
 mkdir build install
 cd build
-cmake .. -DCMAKE_INSTALL_PREFIX="../install" -DCMAKE_BUILD_TYPE=Release -DGTSAM_USE_SYSTEM_EIGEN=ON
+cmake .. -DCMAKE_INSTALL_PREFIX="../install" -DCMAKE_BUILD_TYPE=Release -DGTSAM_USE_SYSTEM_EIGEN=ON -DCMAKE_INSTALL_RPATH="\$ORIGIN" -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
 make -j6 && make install
 
 # build osqp
