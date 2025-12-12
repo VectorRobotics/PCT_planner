@@ -12,8 +12,9 @@ def generate_launch_description():
     pkg_dir = get_package_share_directory('pct_planner')
     pkg_prefix = get_package_prefix('pct_planner')
 
-    # Get path to default parameter file
+    # Get paths to config files
     default_params_file = os.path.join(pkg_dir, 'config', 'pct_planner_params.yaml')
+    default_rviz_file = os.path.join(pkg_dir, 'config', 'rviz', 'default.rviz')
 
     planner_lib_dir = os.path.join(pkg_prefix, '..', '..', 'src', 'route_planner', 'PCT_planner', 'pct_planner', 'planner', 'lib')
     gtsam_lib_dir = os.path.join(planner_lib_dir, '3rdparty', 'gtsam-4.1.1', 'install', 'lib')
@@ -36,6 +37,12 @@ def generate_launch_description():
         'params_file',
         default_value=default_params_file,
         description='Path to PCT planner parameters YAML file'
+    )
+
+    rviz_config_arg = DeclareLaunchArgument(
+        'rviz_config',
+        default_value=default_rviz_file,
+        description='Path to RViz config file'
     )
 
     publish_rate_arg = DeclareLaunchArgument(
@@ -70,11 +77,21 @@ def generate_launch_description():
         prefix='bash -c "export LD_LIBRARY_PATH=' + new_ld_path + ':${LD_LIBRARY_PATH} && export PYTHONPATH=' + new_python_path + ':${PYTHONPATH} && $0 $@" '
     )
 
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', LaunchConfiguration('rviz_config')],
+        output='screen'
+    )
+
     return LaunchDescription([
         pcd_file_arg,
         params_file_arg,
+        rviz_config_arg,
         publish_rate_arg,
         publish_layers_arg,
         LogInfo(msg=['Starting PCT Planner Visualizer with PCD file: ', LaunchConfiguration('pcd_file')]),
         pct_visualizer_node,
+        rviz_node,
     ])
