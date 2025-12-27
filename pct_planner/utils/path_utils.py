@@ -13,6 +13,7 @@ def get_waypoint_from_traj(
 ) -> Optional[PointStamped]:
     """
     Extract the next waypoint from a path using fixed lookahead distance.
+    Uses 3D distance to respect height/floor differences.
 
     Args:
         path_msg: Path message containing the trajectory
@@ -25,87 +26,87 @@ def get_waypoint_from_traj(
     if path_msg is None or len(path_msg.poses) == 0:
         return None
 
-    # Extract current pose
+    # Extract current pose (3D)
     current_pose = np.array([
         odom_msg.pose.pose.position.x,
-        odom_msg.pose.pose.position.y
+        odom_msg.pose.pose.position.y,
+        odom_msg.pose.pose.position.z
     ])
 
-    # Convert path to numpy array (Nx2)
-    path = np.array([
-        [pose.pose.position.x, pose.pose.position.y]
+    # Convert path to numpy array (Nx3)
+    path_3d = np.array([
+        [pose.pose.position.x, pose.pose.position.y, pose.pose.position.z]
         for pose in path_msg.poses
     ])
 
-    # Find closest point on path
-    closest_idx, _ = _find_closest_point_on_path(current_pose, path)
+    # Find closest point on path using 3D distance
+    closest_idx = _find_closest_point_on_path_3d(current_pose, path_3d)
 
-    # Find lookahead point
-    waypoint_2d = _find_lookahead_point(path, closest_idx, lookahead_dist)
+    # Find lookahead point index
+    waypoint_idx = _find_lookahead_index(path_3d, closest_idx, lookahead_dist)
 
-    # Get Z coordinate from the corresponding path point
-    # Find the path index that corresponds to the waypoint
-    waypoint_idx = min(closest_idx + 1, len(path_msg.poses) - 1)
-    waypoint_z = path_msg.poses[waypoint_idx].pose.position.z
+    # Get the waypoint from path
+    waypoint = path_3d[waypoint_idx]
 
     # Create PointStamped message
     waypoint_msg = PointStamped()
     waypoint_msg.header = path_msg.header
-    waypoint_msg.point.x = waypoint_2d[0]
-    waypoint_msg.point.y = waypoint_2d[1]
-    waypoint_msg.point.z = waypoint_z
+    waypoint_msg.point.x = waypoint[0]
+    waypoint_msg.point.y = waypoint[1]
+    waypoint_msg.point.z = waypoint[2]
 
     return waypoint_msg
 
 
-def _find_closest_point_on_path(
+def _find_closest_point_on_path_3d(
     pose: np.ndarray,
     path: np.ndarray
-) -> Tuple[int, np.ndarray]:
+) -> int:
     """
-    Find the closest point on the path to current pose.
+    Find the closest point on the path to current pose using 3D distance.
+    Height differences are weighted more heavily to stay on correct floor.
 
     Args:
-        pose: Current position [x, y]
-        path: Path waypoints as Nx2 array
+        pose: Current position [x, y, z]
+        path: Path waypoints as Nx3 array
 
     Returns:
-        Tuple of (closest_index, closest_point)
+        Index of closest point
     """
-    distances = np.linalg.norm(path - pose, axis=1)
-    closest_idx = np.argmin(distances)
-    return closest_idx, path[closest_idx]
+    # Weight height difference more to prefer same-floor points
+    diff = path - pose
+    # Scale z difference by 3x to heavily penalize floor mismatches
+    diff[:, 2] *= 3.0
+    distances = np.linalg.norm(diff, axis=1)
+    return np.argmin(distances)
 
 
-def _find_lookahead_point(
+def _find_lookahead_index(
     path: np.ndarray,
     start_idx: int,
     lookahead_dist: float
-) -> np.ndarray:
+) -> int:
     """
-    Find look-ahead point on path at specified distance.
+    Find look-ahead point index on path at specified distance.
 
     Args:
-        path: Path waypoints as Nx2 array
+        path: Path waypoints as Nx3 array
         start_idx: Starting index for search
-        lookahead_dist: Lookahead distance in meters
+        lookahead_dist: Lookahead distance in meters (2D, for driving)
 
     Returns:
-        Look-ahead point [x, y]
+        Index of look-ahead point
     """
     accumulated_dist = 0.0
 
     for i in range(start_idx, len(path) - 1):
-        segment_dist = np.linalg.norm(path[i + 1] - path[i])
+        # Use 2D distance for lookahead (horizontal travel distance)
+        segment_dist = np.linalg.norm(path[i + 1, :2] - path[i, :2])
 
         if accumulated_dist + segment_dist >= lookahead_dist:
-            # Interpolate to find exact lookahead point
-            remaining_dist = lookahead_dist - accumulated_dist
-            t = remaining_dist / segment_dist
-            carrot = path[i] + t * (path[i + 1] - path[i])
-            return carrot
+            return i + 1
 
         accumulated_dist += segment_dist
 
     # If lookahead distance exceeds path, return the last point
-    return path[-1]
+    return len(path) - 1

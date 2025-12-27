@@ -19,7 +19,7 @@
     # Larger values = smoother terrain assessment but may miss small obstacles
     # Must be odd number (3, 5, 7, 9, etc.)
     # MATCHES tomography.py default
-    kernel_size: 9
+    kernel_size: 11
 
     # interval_min: Minimum vertical clearance (meters)
     # Minimum free space required above terrain for traversability
@@ -36,31 +36,30 @@
     # Default 30 deg ≈ 58% grade
     # Recommended: 20-35 degrees for most robots
     # MATCHES tomography.py default (0.36 radians = 20.63 degrees)
-    slope_max: 0.36
+    slope_max: 0.45
 
     # step_max: Maximum step height (meters)
     # Maximum vertical discontinuity the robot can traverse
     # Should match robot's physical step-climbing capability
     # MATCHES tomography.py default
-    step_max: 0.3
+    step_max: 0.5
 
     # standable_ratio: Proportion of standable cells required in kernel (0.0-1.0)
     # Higher values = more conservative, requires more stable terrain
     # Lower values = allows planning in rougher terrain
-    standable_ratio: 0.05
-
+    standable_ratio: 0.02
     # cost_barrier: Cost assigned to impassable/highly dangerous terrain
     # Areas with cost >= this value are considered impassable
     # Higher values = allow planning through riskier terrain
     # Default: 50.0 (conservative)
-    cost_barrier: 80.0
+    cost_barrier: 100.0
 
     # Safety and Inflation Parameters
     # safe_margin: Robot safety buffer (meters)
     # Minimum clearance around obstacles
     # Should be larger than robot's physical radius
     # MATCHES tomography.py default
-    safe_margin: 0.05
+    safe_margin: 0.025
 
     # inflation: Additional inflation beyond safety margin (meters)
     # Creates a gradual cost gradient around obstacles
@@ -74,5 +73,5 @@
     # Larger values = smoother following but less responsive to path changes
     # Smaller values = more accurate following but may be jerky
     # Recommended: 1.5-3.0 meters depending on robot speed
-    lookahead_distance: 1.5
+    lookahead_distance: 1.25
 

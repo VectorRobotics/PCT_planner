@@ -11,7 +11,7 @@ from std_srvs.srv import Trigger
 
 from sensor_msgs.msg import PointCloud2
 from sensor_msgs_py import point_cloud2 as pc2
-from nav_msgs.msg import Odometry, Path, OccupancyGrid
+from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import PoseStamped, PointStamped
 from std_msgs.msg import Header
 from std_srvs.srv import Trigger
@@ -21,7 +21,6 @@ from visualization_msgs.msg import Marker
 from pct_planner.scripts.pct_planner import PCTPlanner, TomogramConfig
 from pct_planner.tomography.config.prototype import POINT_FIELDS_XYZI, GRID_POINTS_XYZI
 from pct_planner.tomography.scripts.tomogram_viz import generate_tomogram_pointcloud
-from pct_planner.utils.goal_validator import tomogram_to_occupancy_grid, select_layer_for_height, find_safe_goal_bfs
 from pct_planner.utils.path_utils import get_waypoint_from_traj
 
 
@@ -111,7 +110,6 @@ class PCTPlannerNode(Node):
         self.pub_path = self.create_publisher(Path, '/global_path', latching_qos)
         self.pub_waypoint = self.create_publisher(PointStamped, '/way_point', 10)
         self.pub_tomogram = self.create_publisher(PointCloud2, '/tomogram', latching_qos)
-        self.pub_debug_grid = self.create_publisher(OccupancyGrid, '/tomogram_debug_grid', latching_qos)
         self.pub_goal_pose = self.create_publisher(PoseStamped, '/goal_pose', 10)
         self.pub_goal_marker = self.create_publisher(Marker, '/goal_marker', 10)
 
@@ -204,20 +202,16 @@ class PCTPlannerNode(Node):
         self._publish_waypoint()
 
     def clicked_point_callback(self, msg: PointStamped):
-        """Clicked point callback - converts to goal pose with zero orientation to skip safe goal."""
+        """Clicked point callback - converts to goal pose."""
         goal_pose = PoseStamped()
         goal_pose.header = msg.header
         goal_pose.pose.position = msg.point
-        # Set orientation to all zeros to indicate: skip safe goal adjustment + no goal yaw
-        goal_pose.pose.orientation.x = 0.0
-        goal_pose.pose.orientation.y = 0.0
-        goal_pose.pose.orientation.z = 0.0
         goal_pose.pose.orientation.w = 0.0
         self.pub_goal_pose.publish(goal_pose)
         self.get_logger().info(f"Clicked point: ({msg.point.x:.2f}, {msg.point.y:.2f}, {msg.point.z:.2f})")
 
     def goal_callback(self, msg: PoseStamped):
-        """Goal callback - uses orientation to determine if safe goal adjustment is needed."""
+        """Goal callback - plans path to the received goal pose."""
         goal = (msg.pose.position.x, msg.pose.position.y, msg.pose.position.z)
         self._plan_path(goal)
 
@@ -235,8 +229,8 @@ class PCTPlannerNode(Node):
         finally:
             self.tomogram_processing = False
 
-    def _plan_path(self, goal: tuple, skip_safe_goal: bool = False):
-        """Plan path to goal with optional automatic goal adjustment to safe location."""
+    def _plan_path(self, goal: tuple):
+        """Plan path to goal."""
         if self.current_odom is None:
             self.get_logger().warn("Cannot plan path: missing odometry")
             return
@@ -245,19 +239,10 @@ class PCTPlannerNode(Node):
             return
 
         try:
-            # Extract start pose
             pos = self.current_odom.pose.pose.position
-            start_pose = (pos.x, pos.y, pos.z)
+            start_pose = (pos.x, pos.y, pos.z - 0.45)
 
-            # Adjust goal to safe location (unless skipped for clicked points)
-            if skip_safe_goal:
-                adjusted_goal = goal
-                self.get_logger().info("Using exact clicked point as goal (no safe goal adjustment)")
-            else:
-                adjusted_goal = self._find_safe_goal(goal)
-
-            # Plan path
-            path_msg = self.planner.plan_path_to_ros(start_pose, adjusted_goal)
+            path_msg = self.planner.plan_path_to_ros(start_pose, goal)
             if path_msg is not None:
                 path_msg.header.frame_id = "map"
                 path_msg.header.stamp = self.get_clock().now().to_msg()
@@ -271,44 +256,6 @@ class PCTPlannerNode(Node):
 
         except Exception as e:
             self.get_logger().error(f"Path planning error: {e}")
-
-    def _find_safe_goal(self, goal: tuple) -> tuple:
-        """Find a safe goal location near the requested goal."""
-        metadata = self.planner.current_metadata
-        layers_t = metadata['data'][0]
-        n_slices = layers_t.shape[0]
-
-        layer_idx = select_layer_for_height(goal[2], metadata['slice_h0'], metadata['slice_dh'], n_slices)
-        if layer_idx is None:
-            self.get_logger().warn(f"Goal height {goal[2]:.2f}m out of range, using original")
-            return goal
-
-        # Convert layer to occupancy grid
-        occupancy_grid = tomogram_to_occupancy_grid(layers_t[layer_idx], metadata['resolution'], metadata['center'])
-        occupancy_grid.header.frame_id = "map"
-        occupancy_grid.header.stamp = self.get_clock().now().to_msg()
-        self.pub_debug_grid.publish(occupancy_grid)
-
-        # Find safe goal
-        safe_goal_2d = find_safe_goal_bfs(
-            costmap=occupancy_grid,
-            goal=(goal[0], goal[1]),
-            cost_threshold=50,
-            min_clearance=0.5,
-            max_search_distance=5.0,
-            connectivity_check_radius=3
-        )
-
-        if safe_goal_2d is not None:
-            layer_height = metadata['slice_h0'] + layer_idx * metadata['slice_dh']
-            adjusted = (safe_goal_2d[0], safe_goal_2d[1], layer_height)
-            dist = np.linalg.norm(np.array(goal[:2]) - np.array(safe_goal_2d))
-            if dist > 0.01:
-                self.get_logger().info(f"Goal adjusted by {dist:.2f}m to safe location")
-            return adjusted
-        else:
-            self.get_logger().warn("Could not find safe goal, using original")
-            return goal
 
     def _publish_waypoint(self):
         """Extract and publish the next waypoint from the current path."""
